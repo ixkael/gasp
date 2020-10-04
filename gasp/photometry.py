@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+
+import numpy as np
+
+
 def flux2mag(fluxes, mag_zeropoint=0):
     """
     Flux to magnitude convertion
