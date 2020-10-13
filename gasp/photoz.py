@@ -40,8 +40,8 @@ class PhotometricFilter:
     def __init__(self, bandName, tabulatedWavelength, tabulatedResponse):
 
         self.bandName = bandName
-        self.wavelengthGrid = tabulatedWavelength
-        self.tabulatedResponse = tabulatedResponse
+        self.wavelength = tabulatedWavelength
+        self.transmission = tabulatedResponse
         self.interp = interp1d(tabulatedWavelength, tabulatedResponse)
         self.norm = np.trapz(
             tabulatedResponse / tabulatedWavelength, x=tabulatedWavelength
