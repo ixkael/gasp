@@ -1,4 +1,6 @@
-# The gasp package
+# GASP
+
+GAlaxy Survey Processing
 
 ## Set-up and testing
 From bash
