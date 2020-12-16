@@ -9,6 +9,14 @@ def flux2mag(fluxes, mag_zeropoint=0):
     """
     return -2.5 * np.log10(fluxes) - mag_zeropoint
 
+def flux2mag_witherr(fluxes, fluxerrs, mag_zeropoint=0):
+    """
+    Flux to magnitude convertion
+    """
+    mags =  -2.5 * np.log10(fluxes) - mag_zeropoint
+    magerrs = fluxerrs / fluxes * 2.5 / np.log(10)
+    return mags, magerrs
+
 
 def mag2flux(mags, mag_zeropoint=0):
     """

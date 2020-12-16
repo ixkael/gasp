@@ -101,7 +101,7 @@ def get_redshifted_photometry(lambda_aa, f_lambda_aa, redshift_grid, filter_list
 
             # interpolate filter on redshifted lambda_aa_redshifted grid
             tspec = interp(lambda_aa_redshifted, filt_lambda, filt_spec)
-            print(lambda_aa_redshifted)
+            # print(lambda_aa_redshifted)
             redshifted_fluxes2[iz, ib] = np.trapz(
                 f_nu_aa_redshifted * tspec / lambda_aa_redshifted,
                 x=lambda_aa_redshifted,
