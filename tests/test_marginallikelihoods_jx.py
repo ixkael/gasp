@@ -20,10 +20,6 @@ def assert_fml_thetamap_thetacov(
     assert np.allclose(theta_cov, theta_cov2, rtol=relative_accuracy)
 
 
-def batch_transpose_2d(x):
-    return np.transpose(x, [0, 2, 1])
-
-
 def batch_gaussian_loglikelihood(dx, x_invvar):
     chi2s = np.sum(x_invvar * dx ** 2, axis=(-1))
     logs = np.where(x_invvar == 0, 0, np.log(x_invvar / 2 / np.pi))
@@ -34,6 +30,25 @@ def batch_gaussian_loglikelihood(dx, x_invvar):
 def design_matrix_polynomials(n_components, npix):
     x = np.arange(npix)
     return np.vstack([x ** i for i in np.arange(n_components)])
+
+
+def generate_sample_grid(theta_mean, theta_std, n):
+    n_components = theta_mean.size
+    xs = [
+        np.linspace(
+            theta_mean[i] - 5 * theta_std[i],
+            theta_mean[i] + 5 * theta_std[i],
+            n,
+        )
+        for i in range(n_components)
+    ]
+    mxs = np.meshgrid(*xs)
+    orshape = mxs[0].shape
+    mxsf = np.vstack([i.ravel() for i in mxs]).T
+    dxs = np.vstack([np.diff(xs[i])[i] for i in range(n_components)])
+    vol_element = np.prod(dxs)
+    theta_samples = np.vstack(mxsf)
+    return theta_samples, vol_element
 
 
 def test_logmarglike_lineargaussianmodel_onetransfer():
@@ -80,10 +95,8 @@ def test_logmarglike_lineargaussianmodel_onetransfer():
     )
 
     # check that posterior distribution is equal to product of gaussians too
-    def logprob(
-        theta,
-    ):  # theta is (..., n_components)  M_T is (n_components, n_pix_y)
-        y_mod = np.matmul(theta, M_T)  # (n_samples, n_pix_y, 1)
+    def logprob(theta):
+        y_mod = np.matmul(theta, M_T)  # (n_samples, n_pix_y)
         return batch_gaussian_loglikelihood(y_mod - y, yinvvar)
 
     def logprob2(theta):
@@ -104,26 +117,8 @@ def test_logmarglike_lineargaussianmodel_onetransfer():
         logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, relative_accuracy
     )
 
-    # now numerically sample best fit parameters
-    n_samples = 1000
-    theta_samples = jax.random.multivariate_normal(
-        key,
-        theta_map,
-        theta_cov,
-        shape=(n_samples,),
-    )  # n_samples, n_components
-    y_mod = np.matmul(theta_samples, M_T)  # (n_samples, n_pix_y)
-    loglikelihoods = batch_gaussian_loglikelihood(y_mod - y[None, :], yinvvar[None, :])
-    logfml_numerical = logsumexp(loglikelihoods) - n_samples
-
-    def loss_fn(theta):  # theta is (..., n_components)  M_T is (n_components, n_pix_y)
-        y_mod = np.matmul(theta, M_T)  # (..., n_pix_y)
-        # chi2s = np.sum(x_invvar * dx ** 2, axis=(-2, -1))
-        # logs = np.where(x_invvar == 0, 0, np.log(x_invvar / 2 / np.pi))
-        # logdets = np.sum(logs, axis=(-2, -1))
-        return -np.sum(
-            batch_gaussian_loglikelihood(y_mod - y[None, :], yinvvar[None, :])
-        )
+    def loss_fn(theta):
+        return -logprob(theta)
 
     params = [1 * theta_map]
     learning_rate = 1e-5
@@ -140,23 +135,10 @@ def test_logmarglike_lineargaussianmodel_onetransfer():
     loss_fn_vmap = jit(vmap(loss_fn))
 
     n = 15
-    theta_std = theta_cov ** 0.5
-    xs = [
-        np.linspace(
-            theta_map2[i] - 5 * theta_std[i, i],
-            theta_map2[i] + 5 * theta_std[i, i],
-            n,
-        )
-        for i in range(n_components)
-    ]
-    mxs = np.meshgrid(*xs)
-    orshape = mxs[0].shape
-    mxsf = np.vstack([i.ravel() for i in mxs]).T
-    theta_samples = np.vstack(mxsf)
+    theta_std = np.diag(theta_cov) ** 0.5
+    theta_samples, vol_element = generate_sample_grid(theta_map, theta_std, n)
     loglikelihoods = -loss_fn_vmap(theta_samples)
-    dxs = np.vstack([np.diff(xs[i])[i] for i in range(n_components)])
-    vol = np.prod(dxs)
-    logfml_numerical = logsumexp(np.log(vol) + loglikelihoods)
+    logfml_numerical = logsumexp(np.log(vol_element) + loglikelihoods)
     # print("logfml, logfml_numerical", logfml, logfml_numerical)
     assert abs(logfml_numerical / logfml - 1) < 0.01
 
@@ -167,7 +149,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer():
         y, yinvvar, M_T, mu, muinvvar
     )
     assert_fml_thetamap_thetacov(
-        logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, 0.1
+        logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, 0.2
     )
 
 
@@ -232,5 +214,44 @@ def test_logmarglike_lineargaussianmodel_twotransfers():
         logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, relative_accuracy
     )
 
-    # test jit and compare speed with precalculcated logs
-    # test vectorization
+    # check that posterior distribution is equal to product of gaussians too
+    def logprob(theta):
+        y_mod = np.matmul(theta, M_T)  # (n_samples, n_pix_y)
+        like = batch_gaussian_loglikelihood(y_mod - y, yinvvar)
+        prior = batch_gaussian_loglikelihood(theta - mu, muinvvar)
+        return like + prior
+
+    def logprob2(theta):
+        dt = theta - theta_map
+        s, logdet = np.linalg.slogdet(theta_cov * 2 * np.pi)
+        chi2 = np.dot(dt.T, np.linalg.solve(theta_cov, dt))
+        return logfml - 0.5 * (s * logdet + chi2)
+
+    logpostv = logprob(theta_truth)
+    logpostv2 = logprob2(theta_truth)
+    assert abs(logpostv2 / logpostv - 1) < 0.01
+
+    def loss_fn(theta):
+        return -logprob(theta)
+
+    params = [1 * theta_map]
+    learning_rate = 1e-5
+    for n in range(10):
+        grads = grad(loss_fn)(*params)
+        params = [param - learning_rate * grad for param, grad in zip(params, grads)]
+        # print(n, loss_fn(*params), params[0] - theta_map)
+    assert np.allclose(theta_map, params[0], rtol=1e-6)
+
+    # Testing analytic covariance is correct
+    theta_cov2 = np.linalg.inv(np.reshape(hessian(loss_fn)(theta_map), theta_cov.shape))
+    assert np.allclose(theta_cov, theta_cov2, rtol=1e-6)
+
+    loss_fn_vmap = jit(vmap(loss_fn))
+
+    n = 15
+    theta_std = np.diag(theta_cov) ** 0.5
+    theta_samples, vol_element = generate_sample_grid(theta_map, theta_std, n)
+    logpost = -loss_fn_vmap(theta_samples)
+    logfml_numerical = logsumexp(np.log(vol_element) + logpost)
+    # print("logfml, logfml_numerical", logfml, logfml_numerical)
+    assert abs(logfml_numerical / logfml - 1) < 0.01
