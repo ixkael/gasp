@@ -246,6 +246,12 @@ def logmarglike_lineargaussianmodel_twotransfers_jit(
     return logfml, theta_map, theta_cov
 
 
+logmarglike_lineargaussianmodel_twotransfers_jitvmap = vmap(
+    logmarglike_lineargaussianmodel_twotransfers_jit,
+    in_axes=(None, 0, 0, 0, 0, 0, 0),
+)
+
+
 def logmarglike_lineargaussianmodel_threetransfers(
     ell,  # scalar
     M_T,  #  (n_components, n_pix_y)
@@ -407,7 +413,6 @@ def logmarglike_lineargaussianmodel_threetransfers_jit(
     return logfml, theta_map, theta_cov
 
 
-# ell, y, yinvvar, M_T, z, zinvvar, R_T, mu, muinvvar, logyinvvar, logzinvvar, logmuinvvar
 logmarglike_lineargaussianmodel_threetransfers_jitvmap = vmap(
     logmarglike_lineargaussianmodel_threetransfers_jit,
     in_axes=(0, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0),

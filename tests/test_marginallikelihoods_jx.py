@@ -9,12 +9,18 @@ import jax.random
 import jax.numpy as np
 from jax import grad, jit, vmap, hessian
 from jax.scipy.special import logsumexp
+from jax.experimental import optimizers
 
 from chex import assert_shape, assert_equal_shape
 
 key = jax.random.PRNGKey(42)
 
 relative_accuracy = 0.001
+
+nobj = 10
+n_components = 2
+n_pix_z = 10
+n_pix_y = 100
 
 
 def generate_sample_grid(theta_mean, theta_std, n):
@@ -204,10 +210,8 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
 
 def test_logmarglike_lineargaussianmodel_onetransfer_basics():
 
-    n_components = 2
     theta_truth = jax.random.normal(key, (n_components,))
 
-    n_pix_y = 100
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
@@ -294,14 +298,12 @@ def test_logmarglike_lineargaussianmodel_onetransfer_basics():
 
 def test_logmarglike_lineargaussianmodel_twotransfers_basics():
 
-    n_components = 2
     theta_truth = jax.random.normal(key, (n_components,))
     mu = theta_truth * 1.1
     muinvvar = (theta_truth) ** -2
     mucov = np.eye(n_components) / muinvvar
     logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
 
-    n_pix_y = 100
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
@@ -375,14 +377,12 @@ def test_logmarglike_lineargaussianmodel_threetransfers_basics():
     mucov = np.eye(n_components) / muinvvar
     logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
 
-    n_pix_y = 100
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
 
     ell = 1
 
-    n_pix_z = 10
     R_T = design_matrix_polynomials(n_components, n_pix_z)
     z_truth = np.matmul(theta_truth, R_T)  # (nobj, n_pix_z)
     z, zinvvar, logzinvvar = make_masked_noisy_data(z_truth)  # (nobj, n_pix_z)
@@ -464,23 +464,104 @@ def test_logmarglike_lineargaussianmodel_threetransfers_basics():
     assert abs(logfml_numerical / logfml - 1) < 0.01
 
 
-def test_logmarglike_lineargaussianmodel_threetransfers_demo():
+def test_logmarglike_lineargaussianmodel_twotransfers_vmap():
 
-    nobj = 10
-
-    n_components = 2
     theta_truth = jax.random.normal(key, (nobj, n_components))
     mu = theta_truth * 1.1
     muinvvar = (theta_truth) ** -2
     mucov = np.eye(n_components)[None, :, :] / muinvvar[:, :, None]
     logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
 
-    n_pix_y = 100
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
 
-    n_pix_z = 10
+    # first run
+    (
+        logfml,
+        theta_map,
+        theta_cov,
+    ) = logmarglike_lineargaussianmodel_twotransfers_jitvmap(
+        M_T,
+        y,
+        yinvvar,
+        logyinvvar,
+        mu,
+        muinvvar,
+        logmuinvvar,
+    )
+    # check result is finite and shapes are correct
+    assert np.all(np.isfinite(logfml))
+    assert_shape(logfml, (nobj,))
+    assert_shape(theta_map, (nobj, n_components))
+    assert_shape(theta_cov, (nobj, n_components, n_components))
+
+    def loss(param_list, data_list):
+        (M_T,) = param_list
+        (
+            y,
+            yinvvar,
+            logyinvvar,
+            mu,
+            muinvvar,
+            logmuinvvar,
+        ) = data_list
+        (
+            logfml,
+            theta_map,
+            theta_cov,
+        ) = logmarglike_lineargaussianmodel_twotransfers_jitvmap(
+            M_T,
+            y,
+            yinvvar,
+            logyinvvar,
+            mu,
+            muinvvar,
+            logmuinvvar,
+        )
+        return -np.sum(logfml)
+
+    params = [M_T]
+
+    data = [
+        y,
+        yinvvar,
+        logyinvvar,
+        mu,
+        muinvvar,
+        logmuinvvar,
+    ]
+
+    assert np.isfinite(loss(params, data))
+
+    learning_rate = 1e-3
+    num_steps = 10
+    opt_init, opt_update, get_params = optimizers.adam(learning_rate)
+    opt_state = opt_init(params)
+
+    @jit
+    def update(step, opt_state, data):
+        params = get_params(opt_state)
+        value, grads = jax.value_and_grad(loss)(params, data)
+        opt_state = opt_update(step, grads, opt_state)
+        return value, opt_state
+
+    for step in range(num_steps):
+        value, opt_state = update(step, opt_state, data)
+
+
+def test_logmarglike_lineargaussianmodel_threetransfers_vmap():
+
+    theta_truth = jax.random.normal(key, (nobj, n_components))
+    mu = theta_truth * 1.1
+    muinvvar = (theta_truth) ** -2
+    mucov = np.eye(n_components)[None, :, :] / muinvvar[:, :, None]
+    logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
+
+    M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
+    y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
+    y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
+
     ells = 10 ** jax.random.normal(key, (nobj,))
     R_T = design_matrix_polynomials(n_components, n_pix_z)
     z_truth = ells * np.matmul(theta_truth, R_T)  # (nobj, n_pix_z)
@@ -558,14 +639,10 @@ def test_logmarglike_lineargaussianmodel_threetransfers_demo():
         logmuinvvar,
     ]
 
-    # test
     assert np.isfinite(loss(params, data))
 
     learning_rate = 1e-3
     num_steps = 10
-
-    from jax.experimental import optimizers
-
     opt_init, opt_update, get_params = optimizers.adam(learning_rate)
     opt_state = opt_init(params)
 
