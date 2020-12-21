@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import jax.numpy as np
-from jax import jit
+from jax import jit, vmap
 
 
 def logmarglike_lineargaussianmodel_onetransfer(y, yinvvar, M_T, logyinvvar=None):
@@ -92,6 +92,33 @@ def logmarglike_lineargaussianmodel_onetransfer_jit(y, yinvvar, M_T, logyinvvar)
     xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
     return logfml, theta_map, theta_cov
+
+
+logmarglike_lineargaussianmodel_onetransfer_jitvmap = vmap(
+    logmarglike_lineargaussianmodel_onetransfer_jit, in_axes=(0, 0, None, 0)
+)
+logmarglike_lineargaussianmodel_onetransfer_jitvmap.__doc__ = """
+    Fit linear model to a batch of Gaussian data sets,
+    with no (=uniform) prior on the linear components.
+
+    Parameters
+    ----------
+    y, yinvvar, logyinvvar : ndarray (nobj, n_pix_y)
+        data and data inverse variances.
+        Zeros will be ignored.
+    M_T : ndarray (n_components, n_pix_y)
+        design matrix of linear model
+
+    Returns
+    -------
+    logfml : ndarray (nobj)
+        log likelihood values with parameters marginalised and at best fit
+    theta_map : ndarray (nobj, n_components)
+        Best fit MAP parameters
+    theta_cov : ndarray (nobj, n_components, n_components)
+        Parameter covariance
+
+    """
 
 
 def logmarglike_lineargaussianmodel_twotransfers(

@@ -1,10 +1,16 @@
 from gasp.marginallikelihoods_jx import *
+from gasp.stats import *
+
 import pytest
+
+import numpy as onp
+
 import jax.random
 import jax.numpy as np
-import numpy as onp
 from jax import grad, jit, vmap, hessian
 from jax.scipy.special import logsumexp
+
+from chex import assert_shape
 
 key = jax.random.PRNGKey(42)
 
@@ -14,41 +20,83 @@ relative_accuracy = 0.001
 def assert_fml_thetamap_thetacov(
     logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, relative_accuracy
 ):
+    """
+    Assert that three pairs of numpy arrays are close to each other numerically.
+    """
 
-    assert abs(logfml2 / logfml - 1) < relative_accuracy
+    assert np.allclose(logfml, logfml2, rtol=relative_accuracy)
     assert np.allclose(theta_map, theta_map2, rtol=relative_accuracy)
     assert np.allclose(theta_cov, theta_cov2, rtol=relative_accuracy)
 
 
-def batch_gaussian_loglikelihood(dx, x_invvar):
-    chi2s = np.sum(x_invvar * dx ** 2, axis=(-1))
-    logs = np.where(x_invvar == 0, 0, np.log(x_invvar / 2 / np.pi))
-    logdets = np.sum(logs, axis=(-1))
-    return -0.5 * chi2s + 0.5 * logdets
-
-
 def design_matrix_polynomials(n_components, npix):
-    x = np.arange(npix)
+    """
+    Generate a totally arbitrary matrix of polymials.
+
+    Returns matrix of shape (n_components, npix)
+    where the i-th row is the polynomial x ** i
+    with x some arbitrary pixelisation, here of [-1, 1]
+    """
+    x = np.linspace(-1, 1, npix)
     return np.vstack([x ** i for i in np.arange(n_components)])
 
 
-def generate_sample_grid(theta_mean, theta_std, n):
-    n_components = theta_mean.size
-    xs = [
-        np.linspace(
-            theta_mean[i] - 5 * theta_std[i],
-            theta_mean[i] + 5 * theta_std[i],
-            n,
+def test_logmarglike_lineargaussianmodel_onetransfer_batched():
+
+    # shapes of arrays are in parentheses.
+
+    # generate some fake data (noisy and masked)
+    nobj = 14
+    n_components = 2
+
+    # true linear parameters, per object
+    theta_truth = jax.random.normal(key, (nobj, n_components))
+
+    n_pix_y = 100  # number of pixels for each object
+    M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
+    y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
+    y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
+    assert_equal_shape([y_truth, y, yinvvar, logyinvvar])
+    # importantly, yinvvar and logyinvvar has zeros, symbolising ignored/masked pixels
+
+    # now given the data and model matrix M_T,
+    # compute the evidences, best fit thetas, and their covariances, for all objects at once.
+    (
+        logfml,
+        theta_map,
+        theta_cov,
+    ) = logmarglike_lineargaussianmodel_onetransfer_jitvmap(y, yinvvar, M_T, logyinvvar)
+
+    # checking shapes of output arrays
+    assert_shape(logfml, (nobj,))
+    assert_shape(theta_map, (nobj, n_components))
+    assert_shape(theta_cov, (nobj, n_components, n_components))
+
+    # add more tets
+    # run optimisation of design matrix giv
+    def loss_fn(M_T_new):
+        (
+            logfml,
+            theta_map,
+            theta_cov,
+        ) = logmarglike_lineargaussianmodel_onetransfer_jitvmap(
+            y, yinvvar, M_T_new, logyinvvar
         )
-        for i in range(n_components)
-    ]
-    mxs = np.meshgrid(*xs)
-    orshape = mxs[0].shape
-    mxsf = np.vstack([i.ravel() for i in mxs]).T
-    dxs = np.vstack([np.diff(xs[i])[i] for i in range(n_components)])
-    vol_element = np.prod(dxs)
-    theta_samples = np.vstack(mxsf)
-    return theta_samples, vol_element
+        return -np.sum(logfml)
+
+    M_T_new_initial = jax.random.normal(key, (n_components, n_pix_y))
+    param_list = [1 * M_T_new_initial]
+    num_iterations = 10
+    learning_rate = 1e-5
+    # TODO: use better optimizer
+    for n in range(num_iterations):
+        grad_list = grad(loss_fn)(*param_list)
+        param_list = [
+            param - learning_rate * grad for param, grad in zip(param_list, grad_list)
+        ]
+
+    # optimised matrix:
+    M_T_new_optimised = param_list[0]
 
 
 def test_logmarglike_lineargaussianmodel_onetransfer():
