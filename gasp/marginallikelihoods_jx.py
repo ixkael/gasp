@@ -4,7 +4,7 @@ import jax.numpy as np
 from jax import jit, vmap
 
 
-def logmarglike_lineargaussianmodel_onetransfer(y, yinvvar, M_T, logyinvvar=None):
+def logmarglike_lineargaussianmodel_onetransfer(M_T, y, yinvvar, logyinvvar=None):
     """
     Fit linear model to one Gaussian data set, with no (=uniform) prior on the linear components.
 
@@ -55,7 +55,7 @@ def logmarglike_lineargaussianmodel_onetransfer(y, yinvvar, M_T, logyinvvar=None
     return logfml, theta_map, theta_cov
 
 
-def logmarglike_lineargaussianmodel_onetransfer_jit(y, yinvvar, M_T, logyinvvar):
+def logmarglike_lineargaussianmodel_onetransfer_jit(M_T, y, yinvvar, logyinvvar):
     """
     Fit linear model to one Gaussian data set, with no (=uniform) prior on the linear components.
 
@@ -95,7 +95,7 @@ def logmarglike_lineargaussianmodel_onetransfer_jit(y, yinvvar, M_T, logyinvvar)
 
 
 logmarglike_lineargaussianmodel_onetransfer_jitvmap = vmap(
-    logmarglike_lineargaussianmodel_onetransfer_jit, in_axes=(0, 0, None, 0)
+    logmarglike_lineargaussianmodel_onetransfer_jit, in_axes=(None, 0, 0, 0)
 )
 logmarglike_lineargaussianmodel_onetransfer_jitvmap.__doc__ = """
     Fit linear model to a batch of Gaussian data sets,
@@ -122,9 +122,9 @@ logmarglike_lineargaussianmodel_onetransfer_jitvmap.__doc__ = """
 
 
 def logmarglike_lineargaussianmodel_twotransfers(
+    M_T,  #  (n_components, n_pix_y)
     y,  # (n_pix_y)
     yinvvar,  # (n_pix_y)
-    M_T,  #  (n_components, n_pix_y)
     mu,  # (n_components)
     muinvvar,  #  (n_components)
     logyinvvar=None,
@@ -187,12 +187,12 @@ def logmarglike_lineargaussianmodel_twotransfers(
 
 @jit
 def logmarglike_lineargaussianmodel_twotransfers_jit(
+    M_T,  #  (n_components, n_pix_y)
     y,  # (n_pix_y)
     yinvvar,  # (n_pix_y)
-    M_T,  #  (n_components, n_pix_y)
+    logyinvvar,  # (n_pix_y)
     mu,  # (n_components)
     muinvvar,  #  (n_components)
-    logyinvvar,  # (n_pix_y)
     logmuinvvar,  # (n_pix_y)
 ):
     """
@@ -248,12 +248,12 @@ def logmarglike_lineargaussianmodel_twotransfers_jit(
 
 def logmarglike_lineargaussianmodel_threetransfers(
     ell,  # scalar
+    M_T,  #  (n_components, n_pix_y)
+    R_T,  # (n_components, n_pix_z)
     y,  # (n_pix_y)
     yinvvar,  # (n_pix_y)
-    M_T,  #  (n_components, n_pix_y)
     z,  #  (n_pix_z)
     zinvvar,  #  (n_pix_z)
-    R_T,  # (n_components, n_pix_z)
     mu,  # (n_components)
     muinvvar,  #  (n_components)
     logyinvvar=None,
@@ -332,17 +332,17 @@ def logmarglike_lineargaussianmodel_threetransfers(
 @jit
 def logmarglike_lineargaussianmodel_threetransfers_jit(
     ell,  # scalar
-    y,  # (n_pix_y)
-    yinvvar,  # (n_pix_y)
     M_T,  #  (n_components, n_pix_y)
+    R_T,  # (n_components, n_pix_z)
+    y,  # (n_pix_y)
+    yinvvar,  # (n_pix_y),
+    logyinvvar,  # (n_pix_y),
     z,  #  (n_pix_z)
     zinvvar,  #  (n_pix_z)
-    R_T,  # (n_components, n_pix_z)
+    logzinvvar,  #  (n_pix_z)
     mu,  # (n_components)
-    muinvvar,  #  (n_components)
-    logyinvvar,
-    logzinvvar,
-    logmuinvvar,
+    muinvvar,  # (n_components)
+    logmuinvvar,  # (n_components)
 ):
     """
     Fit linear model to two Gaussian data sets, with Gaussian prior on components.
@@ -351,15 +351,15 @@ def logmarglike_lineargaussianmodel_threetransfers_jit(
     ----------
     ell : ndarray scalar
         scaling between the data: y = ell * z
-    y, yinvvar : ndarray (n_pix_y)
+    y, yinvvar, logyinvvar : ndarray (n_pix_y)
         data and data inverse variances
     M_T : ndarray (n_components, n_pix_y)
         design matrix of linear model
-    z, zinvvar : ndarray (n_pix_z)
+    z, zinvvar, logzinvvar : ndarray (n_pix_z)
         data and data variances for y
     R_T : ndarray (n_components, n_pix_z)
         design matrix of linear model for z
-    mu, muinvvar : ndarray (n_components)
+    mu, muinvvar, logmuinvvar : ndarray (n_components)
         data and data variances for y
 
     Returns
@@ -410,5 +410,5 @@ def logmarglike_lineargaussianmodel_threetransfers_jit(
 # ell, y, yinvvar, M_T, z, zinvvar, R_T, mu, muinvvar, logyinvvar, logzinvvar, logmuinvvar
 logmarglike_lineargaussianmodel_threetransfers_jitvmap = vmap(
     logmarglike_lineargaussianmodel_threetransfers_jit,
-    in_axes=(0, 0, 0, None, 0, 0, None, 0, 0, 0, 0, 0),
+    in_axes=(0, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 )

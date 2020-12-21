@@ -168,7 +168,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
         logfml,
         theta_map,
         theta_cov,
-    ) = logmarglike_lineargaussianmodel_onetransfer_jitvmap(y, yinvvar, M_T, logyinvvar)
+    ) = logmarglike_lineargaussianmodel_onetransfer_jitvmap(M_T, y, yinvvar, logyinvvar)
 
     # checking shapes of output arrays
     assert_shape(logfml, (nobj,))
@@ -183,7 +183,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
             theta_map,
             theta_cov,
         ) = logmarglike_lineargaussianmodel_onetransfer_jitvmap(
-            y, yinvvar, M_T_new, logyinvvar
+            M_T_new, y, yinvvar, logyinvvar
         )
         return -np.sum(logfml)
 
@@ -202,7 +202,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
     M_T_new_optimised = param_list[0]
 
 
-def test_logmarglike_lineargaussianmodel_onetransfer():
+def test_logmarglike_lineargaussianmodel_onetransfer_basics():
 
     n_components = 2
     theta_truth = jax.random.normal(key, (n_components,))
@@ -214,7 +214,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer():
     assert_equal_shape([y_truth, y, yinvvar, logyinvvar])
 
     logfml, theta_map, theta_cov = logmarglike_lineargaussianmodel_onetransfer(
-        y, yinvvar, M_T
+        M_T, y, yinvvar
     )
 
     # check result is finite and shapes are correct
@@ -246,7 +246,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer():
 
     # now trying jit version of function
     logfml2, theta_map2, theta_cov2 = logmarglike_lineargaussianmodel_onetransfer_jit(
-        y, yinvvar, M_T, logyinvvar
+        M_T, y, yinvvar, logyinvvar
     )
     # check that outputs match original implementation
     assert_fml_thetamap_thetacov(
@@ -285,14 +285,14 @@ def test_logmarglike_lineargaussianmodel_onetransfer():
     mu = theta_map * 0
     muinvvar = 1 / (1e4 * np.diag(theta_cov) ** 0.5)
     logfml2, theta_map2, theta_cov2 = logmarglike_lineargaussianmodel_twotransfers(
-        y, yinvvar, M_T, mu, muinvvar
+        M_T, y, yinvvar, mu, muinvvar
     )
     assert_fml_thetamap_thetacov(
         logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, 0.2
     )
 
 
-def test_logmarglike_lineargaussianmodel_twotransfers():
+def test_logmarglike_lineargaussianmodel_twotransfers_basics():
 
     n_components = 2
     theta_truth = jax.random.normal(key, (n_components,))
@@ -308,7 +308,7 @@ def test_logmarglike_lineargaussianmodel_twotransfers():
 
     # first run
     logfml, theta_map, theta_cov = logmarglike_lineargaussianmodel_twotransfers(
-        y, yinvvar, M_T, mu, muinvvar
+        M_T, y, yinvvar, mu, muinvvar
     )
     # check result is finite and shapes are correct
     assert np.isfinite(logfml)
@@ -317,7 +317,7 @@ def test_logmarglike_lineargaussianmodel_twotransfers():
 
     # now trying jit
     logfml2, theta_map2, theta_cov2 = logmarglike_lineargaussianmodel_twotransfers_jit(
-        y, yinvvar, M_T, mu, muinvvar, logyinvvar, logmuinvvar
+        M_T, y, yinvvar, logyinvvar, mu, muinvvar, logmuinvvar
     )
     assert_fml_thetamap_thetacov(
         logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, relative_accuracy
@@ -366,7 +366,7 @@ def test_logmarglike_lineargaussianmodel_twotransfers():
     assert abs(logfml_numerical / logfml - 1) < 0.01
 
 
-def test_logmarglike_lineargaussianmodel_threetransfers():
+def test_logmarglike_lineargaussianmodel_threetransfers_basics():
 
     n_components = 2
     theta_truth = jax.random.normal(key, (n_components,))
@@ -389,11 +389,10 @@ def test_logmarglike_lineargaussianmodel_threetransfers():
 
     # first run
     logfml, theta_map, theta_cov = logmarglike_lineargaussianmodel_threetransfers(
-        ell, y, yinvvar, M_T, z, zinvvar, R_T, mu, muinvvar
+        ell, M_T, R_T, y, yinvvar, z, zinvvar, mu, muinvvar
     )
     # check result is finite and shapes are correct
     assert np.isfinite(logfml)
-    print(logfml)
     assert_shape(theta_map, (n_components,))
     assert_shape(theta_cov, (n_components, n_components))
 
@@ -404,16 +403,16 @@ def test_logmarglike_lineargaussianmodel_threetransfers():
         theta_cov2,
     ) = logmarglike_lineargaussianmodel_threetransfers_jit(
         ell,
+        M_T,
+        R_T,
         y,
         yinvvar,
-        M_T,
+        logyinvvar,
         z,
         zinvvar,
-        R_T,
+        logzinvvar,
         mu,
         muinvvar,
-        logyinvvar,
-        logzinvvar,
         logmuinvvar,
     )
     assert_fml_thetamap_thetacov(
@@ -465,7 +464,7 @@ def test_logmarglike_lineargaussianmodel_threetransfers():
     assert abs(logfml_numerical / logfml - 1) < 0.01
 
 
-def test_logmarglike_lineargaussianmodel_threetransfers():
+def test_logmarglike_lineargaussianmodel_threetransfers_demo():
 
     nobj = 10
 
@@ -473,7 +472,7 @@ def test_logmarglike_lineargaussianmodel_threetransfers():
     theta_truth = jax.random.normal(key, (nobj, n_components))
     mu = theta_truth * 1.1
     muinvvar = (theta_truth) ** -2
-    mucov = np.eye(n_components) / muinvvar
+    mucov = np.eye(n_components)[None, :, :] / muinvvar[:, :, None]
     logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
 
     n_pix_y = 100
@@ -494,64 +493,88 @@ def test_logmarglike_lineargaussianmodel_threetransfers():
         theta_cov,
     ) = logmarglike_lineargaussianmodel_threetransfers_jitvmap(
         ells,
+        M_T,
+        R_T,
         y,
         yinvvar,
-        M_T,
+        logyinvvar,
         z,
         zinvvar,
-        R_T,
+        logzinvvar,
         mu,
         muinvvar,
-        logyinvvar,
-        logzinvvar,
         logmuinvvar,
     )
     # check result is finite and shapes are correct
-    assert np.isfinite(logfml)
-    print(logfml)
-    assert_shape(theta_map, (n_components,))
-    assert_shape(theta_cov, (n_components, n_components))
+    assert np.all(np.isfinite(logfml))
+    assert_shape(logfml, (nobj,))
+    assert_shape(theta_map, (nobj, n_components))
+    assert_shape(theta_cov, (nobj, n_components, n_components))
 
-    # check that posterior distribution is equal to product of gaussians too
-    def log_posterior(theta):
-        y_mod = np.matmul(theta, M_T)  # (n_samples, n_pix_y)
-        like_y = batch_gaussian_loglikelihood(y_mod - y, yinvvar)
-        z_mod = ell * np.matmul(theta, R_T)  # (n_samples, n_pix_y)
-        like_z = batch_gaussian_loglikelihood(z_mod - z, zinvvar)
-        prior = batch_gaussian_loglikelihood(theta - mu, muinvvar)
-        return like_y + like_z + prior
+    def loss(param_list, data_list):
+        (ells, M_T, R_T) = param_list
+        (
+            y,
+            yinvvar,
+            logyinvvar,
+            z,
+            zinvvar,
+            logzinvvar,
+            mu,
+            muinvvar,
+            logmuinvvar,
+        ) = data_list
+        (
+            logfml,
+            theta_map,
+            theta_cov,
+        ) = logmarglike_lineargaussianmodel_threetransfers_jitvmap(
+            ells,
+            M_T,
+            R_T,
+            y,
+            yinvvar,
+            logyinvvar,
+            z,
+            zinvvar,
+            logzinvvar,
+            mu,
+            muinvvar,
+            logmuinvvar,
+        )
+        return -np.sum(logfml)
 
-    def log_posterior2(theta):
-        dt = theta - theta_map
-        s, logdet = np.linalg.slogdet(theta_cov * 2 * np.pi)
-        chi2 = np.dot(dt.T, np.linalg.solve(theta_cov, dt))
-        return logfml - 0.5 * (s * logdet + chi2)
+    params = [ells, M_T, R_T]
 
-    logpostv = log_posterior(theta_truth)
-    logpostv2 = log_posterior2(theta_truth)
-    assert abs(logpostv2 / logpostv - 1) < 0.01
+    data = [
+        y,
+        yinvvar,
+        logyinvvar,
+        z,
+        zinvvar,
+        logzinvvar,
+        mu,
+        muinvvar,
+        logmuinvvar,
+    ]
 
-    def loss_fn(theta):
-        return -log_posterior(theta)
+    # test
+    assert np.isfinite(loss(params, data))
 
-    params = [1 * theta_map]
-    learning_rate = 1e-5
-    for n in range(10):
-        grads = grad(loss_fn)(*params)
-        params = [param - learning_rate * grad for param, grad in zip(params, grads)]
-        # print(n, loss_fn(*params), params[0] - theta_map)
-    assert np.allclose(theta_map, params[0], rtol=1e-6)
+    learning_rate = 1e-3
+    num_steps = 10
 
-    # Testing analytic covariance is correct
-    theta_cov2 = np.linalg.inv(np.reshape(hessian(loss_fn)(theta_map), theta_cov.shape))
-    assert np.allclose(theta_cov, theta_cov2, rtol=1e-6)
+    from jax.experimental import optimizers
 
-    loss_fn_vmap = jit(vmap(loss_fn))
+    opt_init, opt_update, get_params = optimizers.adam(learning_rate)
+    opt_state = opt_init(params)
 
-    n = 15
-    theta_std = np.diag(theta_cov) ** 0.5
-    theta_samples, vol_element = generate_sample_grid(theta_map, theta_std, n)
-    logpost = -loss_fn_vmap(theta_samples)
-    logfml_numerical = logsumexp(np.log(vol_element) + logpost)
-    # print("logfml, logfml_numerical", logfml, logfml_numerical)
-    assert abs(logfml_numerical / logfml - 1) < 0.01
+    @jit
+    def update(step, opt_state, data):
+        params = get_params(opt_state)
+        value, grads = jax.value_and_grad(loss)(params, data)
+        opt_state = opt_update(step, grads, opt_state)
+        return value, opt_state
+
+    for step in range(num_steps):
+        value, opt_state = update(step, opt_state, data)
