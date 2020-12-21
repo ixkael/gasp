@@ -303,8 +303,8 @@ def logmarglike_lineargaussianmodel_threetransfers(
         + np.eye(nt) * muinvvar[:, None]
     )  #  (n_components, n_components)
     etabar = (
-        ell * np.sum(Rzinv * z[:, None], axis=0)[:, None]
-        + np.sum(Myinv * y[:, None], axis=0)[:, None]
+        ell * np.sum(Rzinv * z[:, None], axis=0)
+        + np.sum(Myinv * y[:, None], axis=0)
         + mu * muinvvar
     )  # (n_components)
     theta_map = np.linalg.solve(Hbar, etabar)  # (n_components)
@@ -327,3 +327,88 @@ def logmarglike_lineargaussianmodel_threetransfers(
     xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
     return logfml, theta_map, theta_cov
+
+
+@jit
+def logmarglike_lineargaussianmodel_threetransfers_jit(
+    ell,  # scalar
+    y,  # (n_pix_y)
+    yinvvar,  # (n_pix_y)
+    M_T,  #  (n_components, n_pix_y)
+    z,  #  (n_pix_z)
+    zinvvar,  #  (n_pix_z)
+    R_T,  # (n_components, n_pix_z)
+    mu,  # (n_components)
+    muinvvar,  #  (n_components)
+    logyinvvar,
+    logzinvvar,
+    logmuinvvar,
+):
+    """
+    Fit linear model to two Gaussian data sets, with Gaussian prior on components.
+
+    Parameters
+    ----------
+    ell : ndarray scalar
+        scaling between the data: y = ell * z
+    y, yinvvar : ndarray (n_pix_y)
+        data and data inverse variances
+    M_T : ndarray (n_components, n_pix_y)
+        design matrix of linear model
+    z, zinvvar : ndarray (n_pix_z)
+        data and data variances for y
+    R_T : ndarray (n_components, n_pix_z)
+        design matrix of linear model for z
+    mu, muinvvar : ndarray (n_components)
+        data and data variances for y
+
+    Returns
+    -------
+    logfml : ndarray scalar
+        log likelihood values with parameters marginalised and at best fit
+    theta_map : ndarray (n_components)
+        Best fit MAP parameters
+    theta_cov : ndarray (n_components, n_components)
+        Parameter covariance
+
+    """
+    log2pi = np.log(2.0 * np.pi)
+    nt = np.shape(M_T)[-2]
+    ny = np.count_nonzero(yinvvar)
+    nz = np.count_nonzero(zinvvar)
+    nm = np.count_nonzero(muinvvar)
+    M = np.transpose(M_T)  # (n_pix_y, n_components)
+    R = np.transpose(R_T)  # (n_pix_z, n_components)
+    Myinv = M * yinvvar[:, None]  # (n_pix_y, n_components)
+    Rzinv = R * zinvvar[:, None]  # (n_pix_z, n_components)
+    Hbar = (
+        ell ** 2 * np.matmul(R_T, Rzinv)
+        + np.matmul(M_T, Myinv)
+        + np.eye(nt) * muinvvar[:, None]
+    )  #  (n_components, n_components)
+    etabar = (
+        ell * np.sum(Rzinv * z[:, None], axis=0)
+        + np.sum(Myinv * y[:, None], axis=0)
+        + mu * muinvvar
+    )  # (n_components)
+    theta_map = np.linalg.solve(Hbar, etabar)  # (n_components)
+    theta_cov = np.linalg.inv(Hbar)  # (n_components, n_components)
+    logdetH = np.sum(logyinvvar) + np.sum(logzinvvar) + np.sum(logmuinvvar)  # scalar
+    xi1 = -0.5 * (
+        (ny + nz + nm) * log2pi
+        - logdetH
+        + np.sum(y * y * yinvvar)
+        + np.sum(z * z * zinvvar)
+        + np.sum(mu * mu * muinvvar)
+    )  # scalar
+    sign, logdetHbar = np.linalg.slogdet(Hbar)
+    xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
+    logfml = xi1 - xi2
+    return logfml, theta_map, theta_cov
+
+
+# ell, y, yinvvar, M_T, z, zinvvar, R_T, mu, muinvvar, logyinvvar, logzinvvar, logmuinvvar
+logmarglike_lineargaussianmodel_threetransfers_jitvmap = vmap(
+    logmarglike_lineargaussianmodel_threetransfers_jit,
+    in_axes=(0, 0, 0, None, 0, 0, None, 0, 0, 0, 0, 0),
+)
