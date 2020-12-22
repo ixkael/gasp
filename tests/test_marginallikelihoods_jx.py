@@ -592,6 +592,9 @@ def test_logmarglike_lineargaussianmodel_threetransfers_vmap():
     assert_shape(theta_map, (nobj, n_components))
     assert_shape(theta_cov, (nobj, n_components, n_components))
 
+    theta_std = np.diagonal(theta_cov, axis1=1, axis2=2) ** 0.5
+    assert_shape(theta_std, (nobj, n_components))
+
     def loss(param_list, data_list):
         (ells, M_T, R_T) = param_list
         (
