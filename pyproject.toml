@@ -1,4 +1,6 @@
 
+# poetry export -f requirements.txt --output requirements.txt
+
 [tool.poetry]
 name = "gasp"
 version = "0.1.0"
@@ -18,6 +20,10 @@ scipy = "^1.5.4"
 chex = "^0.0.3"
 jax = "^0.2.7"
 sedpy = { git = "https://github.com/bd-j/sedpy.git" }
+pandas = "^1.1.5"
+jupyter = "^1.0.0"
+ipykernel = "^5.4.2"
+matplotlib = "^3.3.3"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.1"
@@ -29,7 +35,7 @@ requires = ["poetry>=0.12"]
 build-backend = "poetry.masonry.api"
 
 [tool.coverage.paths]
-source = ["src", "*/site-packages"]
+source = ["gasp", "*/site-packages"]
 
 [tool.coverage.run]
 branch = true
