@@ -9,7 +9,7 @@ from sedpy import observate
 def test_photometry_and_transferfunctions():
 
     filternames = ["decam_g", "decam_r", "decam_z"]
-    filterdir = "/Users/bl/Dropbox/repos/sedpy/sedpy/data/filters"
+    filterdir = "data/filters"
     filter_list = observate.load_filters(filternames, directory=filterdir)
 
     lambda_aa, f_lambda_aa = load_test_sed()
