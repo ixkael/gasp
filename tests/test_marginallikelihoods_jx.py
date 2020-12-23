@@ -163,6 +163,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
 
     n_pix_y = 100  # number of pixels for each object
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
+    M_T_y = M_T[None, :, :] * np.ones((nobj, 1, 1))  # (nobj, n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
     assert_equal_shape([y_truth, y, yinvvar, logyinvvar])
@@ -174,7 +175,9 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
         logfml,
         theta_map,
         theta_cov,
-    ) = logmarglike_lineargaussianmodel_onetransfer_jitvmap(M_T, y, yinvvar, logyinvvar)
+    ) = logmarglike_lineargaussianmodel_onetransfer_jitvmap(
+        M_T_y, y, yinvvar, logyinvvar
+    )
 
     # checking shapes of output arrays
     assert_shape(logfml, (nobj,))
@@ -193,7 +196,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
         )
         return -np.sum(logfml)
 
-    M_T_new_initial = jax.random.normal(key, (n_components, n_pix_y))
+    M_T_new_initial = jax.random.normal(key, (nobj, n_components, n_pix_y))
     param_list = [1 * M_T_new_initial]
     num_iterations = 10
     learning_rate = 1e-5
@@ -473,6 +476,7 @@ def test_logmarglike_lineargaussianmodel_twotransfers_vmap():
     logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
 
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
+    M_T_y = M_T[None, :, :] * np.ones((nobj, 1, 1))  # (nobj, n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
 
@@ -482,7 +486,7 @@ def test_logmarglike_lineargaussianmodel_twotransfers_vmap():
         theta_map,
         theta_cov,
     ) = logmarglike_lineargaussianmodel_twotransfers_jitvmap(
-        M_T,
+        M_T_y,
         y,
         yinvvar,
         logyinvvar,
@@ -521,7 +525,7 @@ def test_logmarglike_lineargaussianmodel_twotransfers_vmap():
         )
         return -np.sum(logfml)
 
-    params = [M_T]
+    params = [M_T_y]
 
     data = [
         y,
@@ -559,11 +563,13 @@ def test_logmarglike_lineargaussianmodel_threetransfers_vmap():
     logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
 
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
+    M_T_y = M_T[None, :, :] * np.ones((nobj, 1, 1))  # (nobj, n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
 
     ells = 10 ** jax.random.normal(key, (nobj,))
     R_T = design_matrix_polynomials(n_components, n_pix_z)
+    R_T_z = R_T[None, :, :] * np.ones((nobj, 1, 1))  # (nobj, n_components, n_pix_y)
     z_truth = ells * np.matmul(theta_truth, R_T)  # (nobj, n_pix_z)
     z, zinvvar, logzinvvar = make_masked_noisy_data(z_truth)  # (nobj, n_pix_z)
 
@@ -574,8 +580,8 @@ def test_logmarglike_lineargaussianmodel_threetransfers_vmap():
         theta_cov,
     ) = logmarglike_lineargaussianmodel_threetransfers_jitvmap(
         ells,
-        M_T,
-        R_T,
+        M_T_y,
+        R_T_z,
         y,
         yinvvar,
         logyinvvar,
@@ -596,7 +602,7 @@ def test_logmarglike_lineargaussianmodel_threetransfers_vmap():
     assert_shape(theta_std, (nobj, n_components))
 
     def loss(param_list, data_list):
-        (ells, M_T, R_T) = param_list
+        (ells, M_T_y, R_T_z) = param_list
         (
             y,
             yinvvar,
@@ -614,8 +620,8 @@ def test_logmarglike_lineargaussianmodel_threetransfers_vmap():
             theta_cov,
         ) = logmarglike_lineargaussianmodel_threetransfers_jitvmap(
             ells,
-            M_T,
-            R_T,
+            M_T_y,
+            R_T_z,
             y,
             yinvvar,
             logyinvvar,
@@ -628,7 +634,7 @@ def test_logmarglike_lineargaussianmodel_threetransfers_vmap():
         )
         return -np.sum(logfml)
 
-    params = [ells, M_T, R_T]
+    params = [ells, M_T_y, R_T_z]
 
     data = [
         y,

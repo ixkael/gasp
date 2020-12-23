@@ -94,7 +94,7 @@ def logmarglike_lineargaussianmodel_onetransfer_jit(M_T, y, yinvvar, logyinvvar)
 
 
 logmarglike_lineargaussianmodel_onetransfer_jitvmap = vmap(
-    logmarglike_lineargaussianmodel_onetransfer_jit, in_axes=(None, 0, 0, 0)
+    logmarglike_lineargaussianmodel_onetransfer_jit, in_axes=(0, 0, 0, 0)
 )
 logmarglike_lineargaussianmodel_onetransfer_jitvmap.__doc__ = """
     Fit linear model to a batch of Gaussian data sets,
@@ -192,7 +192,7 @@ def logmarglike_lineargaussianmodel_twotransfers_jit(
     logyinvvar,  # (n_pix_y)
     mu,  # (n_components)
     muinvvar,  #  (n_components)
-    logmuinvvar,  # (n_pix_y)
+    logmuinvvar,  # (n_components)
 ):
     """
     Fit linear model to one Gaussian data sets, with Gaussian prior on linear components.
@@ -247,7 +247,7 @@ def logmarglike_lineargaussianmodel_twotransfers_jit(
 
 logmarglike_lineargaussianmodel_twotransfers_jitvmap = vmap(
     logmarglike_lineargaussianmodel_twotransfers_jit,
-    in_axes=(None, 0, 0, 0, 0, 0, 0),
+    in_axes=(0, 0, 0, 0, 0, 0, 0),
 )
 
 
@@ -414,5 +414,5 @@ def logmarglike_lineargaussianmodel_threetransfers_jit(
 
 logmarglike_lineargaussianmodel_threetransfers_jitvmap = vmap(
     logmarglike_lineargaussianmodel_threetransfers_jit,
-    in_axes=(0, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+    in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 )
