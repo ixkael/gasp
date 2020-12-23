@@ -1,5 +1,6 @@
 
 # poetry export -f requirements.txt --output requirements.txt
+# poetry run pytest --cov -p no:warnings
 
 [tool.poetry]
 name = "gasp"
@@ -24,6 +25,7 @@ pandas = "^1.1.5"
 jupyter = "^1.0.0"
 ipykernel = "^5.4.2"
 matplotlib = "^3.3.3"
+flatbuffers = "^1.12"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.1"
