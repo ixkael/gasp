@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 
+from jax import partial, jit
 import jax.numpy as np
+from jax.lax import dynamic_slice
 
 
+@partial(jit, static_argnums=(1, 2))
 def take_batch(pcacomponents, start_indices, npix):
     """
 
@@ -26,11 +29,9 @@ def take_batch(pcacomponents, start_indices, npix):
     indices_2d = start_indices[:, None] + np.arange(npix)[None, :]
 
     indices_0 = np.arange(n_components)[None, :, None] * np.ones(
-        (nobj, n_components, specwavesize), dtype=int
+        (nobj, n_components, npix), dtype=int
     )
-    indices_1 = indices_2d[:, None, :] * np.ones(
-        (nobj, n_components, specwavesize), dtype=int
-    )
+    indices_1 = indices_2d[:, None, :] * np.ones((nobj, n_components, npix), dtype=int)
 
     pcacomponents_atz = pcacomponents[indices_0, indices_1]
 

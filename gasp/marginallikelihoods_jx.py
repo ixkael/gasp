@@ -10,7 +10,7 @@ def logmarglike_lineargaussianmodel_onetransfer(M_T, y, yinvvar, logyinvvar=None
 
     Parameters
     ----------
-    y, yinvvar : ndarray (n_pix_y)
+    y, yinvvar, logyinvvar : ndarray (n_pix_y)
         data and data inverse variances.
         Zeros will be ignored.
     M_T : ndarray (n_components, n_pix_y)
@@ -24,7 +24,6 @@ def logmarglike_lineargaussianmodel_onetransfer(M_T, y, yinvvar, logyinvvar=None
         Best fit MAP parameters
     theta_cov : ndarray (n_components, n_components)
         Parameter covariance
-    logyinvvar : TODO
 
     """
     # assert y.shape[-2] == yinvvar.shape[-2]
