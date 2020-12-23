@@ -3,10 +3,22 @@
 GAlaxy Survey Processing
 
 ## Set-up and testing
-From bash
+
+After downloading and unzipping, you could use pip and run the tests:
 ```
 $ pip install -e .
 $ pytest .
+```
+
+However, it is much better to deploy Poetry,
+```
+poetry install
+poetry run pytest --cov
+```
+and then use its virtual environment to run a notebook:
+```
+poetry shell
+jupyter notebook
 ```
 
 ## People
