@@ -7,7 +7,7 @@ import numpy as onp
 
 import jax.random
 import jax.numpy as np
-from jax import grad, jit, vmap, hessian
+from jax import grad, jit, vmap, hessian, partial
 from jax.scipy.special import logsumexp
 from jax.experimental import optimizers
 
@@ -186,7 +186,10 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
 
     # add more tets
     # run optimisation of design matrix giv
-    def loss_fn(M_T_new):
+    @partial(jit, static_argnums=(1))
+    def loss_fn(params, data):
+        M_T_new = params[0]  # params is a list
+        y, yinvvar, logyinvvar = data
         (
             logfml,
             theta_map,
@@ -198,14 +201,24 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
 
     M_T_new_initial = jax.random.normal(key, (nobj, n_components, n_pix_y))
     param_list = [1 * M_T_new_initial]
-    num_iterations = 10
+
     learning_rate = 1e-5
+    opt_init, opt_update, get_params = jax.experimental.optimizers.adam(learning_rate)
+    opt_state = opt_init(param_list)
+
+    @partial(jit, static_argnums=(2))
+    def update(step, opt_state, data):
+        params = get_params(opt_state)
+        value, grads = jax.value_and_grad(loss_fn)(params, data)
+        opt_state = opt_update(step, grads, opt_state)
+        return value, opt_state
+
+    num_iterations = 10
     # TODO: use better optimizer
-    for n in range(num_iterations):
-        grad_list = grad(loss_fn)(*param_list)
-        param_list = [
-            param - learning_rate * grad for param, grad in zip(param_list, grad_list)
-        ]
+    data = (y, yinvvar, logyinvvar)
+    for step in range(num_iterations):
+        # Could potentially also iterage over batches of data
+        loss_value, opt_state = update(step, opt_state, data)
 
     # optimised matrix:
     M_T_new_optimised = param_list[0]
