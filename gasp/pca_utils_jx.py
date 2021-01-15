@@ -5,7 +5,7 @@ import jax.numpy as np
 from jax.lax import dynamic_slice
 
 
-@partial(jit, static_argnums=(1, 2))
+@partial(jit, static_argnums=(2))
 def take_batch(pcacomponents, start_indices, npix):
     """
 
