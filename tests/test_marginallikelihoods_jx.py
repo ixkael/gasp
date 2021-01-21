@@ -164,7 +164,11 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
     n_pix_y = 100  # number of pixels for each object
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
     M_T_y = M_T[None, :, :] * np.ones((nobj, 1, 1))  # (nobj, n_components, n_pix_y)
+
+    # data array, truth
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
+
+    # data array, with noise, and array containing the inverse noise variance and its logarithm
     y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
     assert_equal_shape([y_truth, y, yinvvar, logyinvvar])
     # importantly, yinvvar and logyinvvar has zeros, symbolising ignored/masked pixels
@@ -221,7 +225,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
         loss_value, opt_state = update(step, opt_state, data)
 
     # optimised matrix:
-    M_T_new_optimised = param_list[0]
+    M_T_new_optimised = get_params(opt_state)
 
 
 def test_logmarglike_lineargaussianmodel_onetransfer_basics():
