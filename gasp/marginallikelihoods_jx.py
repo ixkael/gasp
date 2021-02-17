@@ -49,7 +49,7 @@ def logmarglike_lineargaussianmodel_onetransfer(M_T, y, yinvvar, logyinvvar=None
     logdetH = np.sum(logyinvvar)  # scalar
     xi1 = -0.5 * (ny * log2pi - logdetH + np.sum(y * y * yinvvar))  # scalar
     sign, logdetHbar = np.linalg.slogdet(Hbar)
-    xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
+    xi2 = -0.5 * (nt * log2pi - logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
     return logfml, theta_map, theta_cov
 
@@ -88,7 +88,7 @@ def logmarglike_lineargaussianmodel_onetransfer_jit(M_T, y, yinvvar, logyinvvar)
     logdetH = np.sum(logyinvvar)  # scalar
     xi1 = -0.5 * (ny * log2pi - logdetH + np.sum(y * y * yinvvar))  # scalar
     sign, logdetHbar = np.linalg.slogdet(Hbar)
-    xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
+    xi2 = -0.5 * (nt * log2pi - logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
     return logfml, theta_map, theta_cov
 
@@ -179,8 +179,11 @@ def logmarglike_lineargaussianmodel_twotransfers(
         + np.sum(mu * mu * muinvvar)
     )  # scalar
     sign, logdetHbar = np.linalg.slogdet(Hbar)
-    xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
+    xi2 = -0.5 * (nt * log2pi - logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
+    print("my Cinv_X", np.sum(y * y * yinvvar) - np.sum(etabar * theta_map))
+    print("my logdet", -logdetH + logdetHbar)
+    print("my counts", (ny + nm - nt) * log2pi)
     return logfml, theta_map, theta_cov
 
 
@@ -240,7 +243,7 @@ def logmarglike_lineargaussianmodel_twotransfers_jit(
         + np.sum(mu * mu * muinvvar)
     )  # scalar
     sign, logdetHbar = np.linalg.slogdet(Hbar)
-    xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
+    xi2 = -0.5 * (nt * log2pi - logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
     return logfml, theta_map, theta_cov
 
@@ -329,7 +332,7 @@ def logmarglike_lineargaussianmodel_threetransfers(
         + np.sum(mu * mu * muinvvar)
     )  # scalar
     sign, logdetHbar = np.linalg.slogdet(Hbar)
-    xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
+    xi2 = -0.5 * (nt * log2pi - logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
     return logfml, theta_map, theta_cov
 
@@ -407,7 +410,7 @@ def logmarglike_lineargaussianmodel_threetransfers_jit(
         + np.sum(mu * mu * muinvvar)
     )  # scalar
     sign, logdetHbar = np.linalg.slogdet(Hbar)
-    xi2 = -0.5 * (nt * log2pi - sign * logdetHbar + np.sum(etabar * theta_map))
+    xi2 = -0.5 * (nt * log2pi - logdetHbar + np.sum(etabar * theta_map))
     logfml = xi1 - xi2
     return logfml, theta_map, theta_cov
 

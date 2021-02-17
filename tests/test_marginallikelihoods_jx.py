@@ -87,7 +87,7 @@ def make_masked_noisy_data(y_truth, masked_fraction=0.5):
     rn = jax.random.normal(key, (nobj, n_pix_y))
     y = y_truth + rn * (yinvvar ** -0.5)
     rn = onp.random.uniform(size=n_pix_y * nobj).reshape((nobj, n_pix_y))
-    mask_y = rn < masked_fraction
+    mask_y = rn > masked_fraction
     yinvvar_withzeros = yinvvar * mask_y
     y_withzeros = y * mask_y
     logyinvvar_withzeros = np.where(
@@ -190,7 +190,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
 
     # add more tets
     # run optimisation of design matrix giv
-    @partial(jit, static_argnums=(1))
+    @partial(jit, static_argnums=())
     def loss_fn(params, data):
         M_T_new = params[0]  # params is a list
         y, yinvvar, logyinvvar = data
@@ -210,7 +210,7 @@ def test_logmarglike_lineargaussianmodel_onetransfer_batched():
     opt_init, opt_update, get_params = jax.experimental.optimizers.adam(learning_rate)
     opt_state = opt_init(param_list)
 
-    @partial(jit, static_argnums=(2))
+    @partial(jit, static_argnums=())
     def update(step, opt_state, data):
         params = get_params(opt_state)
         value, grads = jax.value_and_grad(loss_fn)(params, data)
@@ -326,7 +326,9 @@ def test_logmarglike_lineargaussianmodel_twotransfers_basics():
 
     M_T = design_matrix_polynomials(n_components, n_pix_y)  # (n_components, n_pix_y)
     y_truth = np.matmul(theta_truth, M_T)  # (nobj, n_pix_y)
-    y, yinvvar, logyinvvar = make_masked_noisy_data(y_truth)  # (nobj, n_pix_y)
+    y, yinvvar, logyinvvar = make_masked_noisy_data(
+        y_truth, masked_fraction=0.5
+    )  # (nobj, n_pix_y)
 
     # first run
     logfml, theta_map, theta_cov = logmarglike_lineargaussianmodel_twotransfers(
@@ -338,11 +340,21 @@ def test_logmarglike_lineargaussianmodel_twotransfers_basics():
     assert_shape(theta_cov, (n_components, n_components))
 
     # now trying jit
-    logfml2, theta_map2, theta_cov2 = logmarglike_lineargaussianmodel_twotransfers_jit(
+    (
+        logfml2,
+        theta_map2,
+        theta_cov2,
+    ) = logmarglike_lineargaussianmodel_twotransfers_jit(
         M_T, y, yinvvar, logyinvvar, mu, muinvvar, logmuinvvar
     )
     assert_fml_thetamap_thetacov(
-        logfml, theta_map, theta_cov, logfml2, theta_map2, theta_cov2, relative_accuracy
+        logfml,
+        theta_map,
+        theta_cov,
+        logfml2,
+        theta_map2,
+        theta_cov2,
+        relative_accuracy,
     )
 
     # check that posterior distribution is equal to product of gaussians too
