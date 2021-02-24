@@ -6,6 +6,7 @@ GAlaxy Survey Processing
 
 After downloading and unzipping, you could use pip and run the tests:
 ```
+$ pip install -r requirements.txt
 $ pip install -e .
 $ pytest .
 ```
