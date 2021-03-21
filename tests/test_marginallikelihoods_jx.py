@@ -23,6 +23,138 @@ n_pix_z = 10
 n_pix_y = 100
 
 
+def test_photoz():
+
+    nobj = 10
+    n_components = 3
+    n_pix_y = 13
+    theta_truth = jax.random.normal(key, (nobj, n_components))
+    mu = theta_truth * 1.0
+    muinvvar = (mu * 1e2) ** -2
+    logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
+
+    # Scaling should be per object and component
+    ymod = jax.random.normal(
+        key, (nobj, n_components, n_pix_y)
+    )  # (nobj, n_components, n_pix_y)
+    y_truth = theta_truth[:, :, None] * ymod  # (nobj, n_components, n_pix_y)
+    y, yinvvar, logyinvvar = make_masked_noisy_data(
+        y_truth
+    )  # (nobj, n_components, n_pix_y)
+    yerr = yinvvar ** -0.5
+
+    redshifts = np.ones((nobj,))
+
+    def init_params(n_pix_y, n_components):
+        return np.ones((n_pix_y + 2 * n_components))
+
+    @jax.partial(jit, static_argnums=(2, 3))
+    def extra_params(params, redshifts, n_pix_y, n_components):
+        # prepare zeropoints and priors from raw pytree
+        zeropoints = params[0:n_pix_y] / np.sum(params[0:n_pix_y])
+        mu_atz = (
+            params[n_pix_y : n_pix_y + n_components][None, :]
+            * np.ones_like(redshifts)[:, None]
+        )
+        muinvvar_atz = (
+            10 ** params[n_pix_y + n_components : n_pix_y + 2 * n_components][None, :]
+            * np.ones_like(redshifts)[:, None]
+        )
+        return zeropoints, mu_atz, muinvvar_atz
+
+    @jax.partial(jit, static_argnums=(3, 4))
+    def model_fn(params, ymod, data, n_pix_y, n_components):
+        y_uncorr, yerr_uncorr, redshifts = data
+        zeropoints, mu, muinvvar = extra_params(
+            params, redshifts, n_pix_y, n_components
+        )
+        logmuinvvar = np.log(muinvvar)
+        y = y_uncorr * zeropoints[None, :]
+        yerr = yerr_uncorr * zeropoints[None, :]
+        yinvvar = yerr ** -2
+        logyinvvar = np.log(yinvvar)
+        # multi object case: check shapes
+        logfml, theta_map, theta_cov = logmarglike_scalingmodel_gaussianprior_jitvmap(
+            ymod, y, yinvvar, logyinvvar, mu, muinvvar, logmuinvvar
+        )
+        return logfml, theta_map, theta_cov
+
+    @jax.partial(jit, static_argnums=(3, 4))
+    def loss_fn(params, ymod, data, n_pix_y, n_components):
+        logfml, _, _ = model_fn(params, ymod, data, n_pix_y, n_components)
+        return -np.sum(logfml)
+
+    params = init_params(n_pix_y, n_components)
+    learning_rate = 1e-5
+    opt_init, opt_update, get_params = jax.experimental.optimizers.adam(learning_rate)
+    opt_state = opt_init(params)
+
+    data = (y, yerr, redshifts)
+
+    loss = loss_fn(params, ymod, data, n_pix_y, n_components)
+
+    @jax.partial(jit, static_argnums=(4, 5))
+    def update(step, opt_state, ymod, data, n_pix_y, n_components):
+        params = get_params(opt_state)
+        value, grads = jax.value_and_grad(loss_fn)(
+            params, ymod, data, n_pix_y, n_components
+        )
+        opt_state = opt_update(step, grads, opt_state)
+        return value, opt_state
+
+    num_iterations = 10
+    for step in range(num_iterations):
+        loss_value, opt_state = update(
+            step, opt_state, ymod, data, n_pix_y, n_components
+        )
+
+
+def test_logmarglike_scalingmodels():
+
+    nobj = 10
+    n_components = 3
+    n_pix_y = 13
+    theta_truth = jax.random.normal(key, (nobj, n_components))
+    mu = theta_truth * 1.0
+    muinvvar = (mu * 1e6) ** -2
+    logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
+
+    # Scaling should be per object and component
+    ymod = jax.random.normal(
+        key, (nobj, n_components, n_pix_y)
+    )  # (nobj, n_components, n_pix_y)
+    y_truth = theta_truth[:, :, None] * ymod  # (nobj, n_components, n_pix_y)
+    y, yinvvar, logyinvvar = make_masked_noisy_data(
+        y_truth
+    )  # (nobj, n_components, n_pix_y)
+
+    # check solutions of flat prior against broad prior
+    print(ymod.shape, y.shape)
+    # one object, all components
+    logfml, theta_map, theta_cov = logmarglike_scalingmodel_flatprior_jit(
+        ymod[0, :, :], y[0, :, :], yinvvar[0, :, :], logyinvvar[0, :, :]
+    )
+    logfml2, theta_map2, theta_cov2 = logmarglike_scalingmodel_gaussianprior_jit(
+        ymod[0, :, :],
+        y[0, :, :],
+        yinvvar[0, :, :],
+        logyinvvar[0, :, :],
+        mu[0, :],
+        muinvvar[0, :],
+        logmuinvvar[0, :],
+    )
+    assert np.allclose(logfml, logfml2, rtol=1e0)
+    assert np.allclose(theta_map, theta_map2, rtol=1e-1)
+
+    # multi object case: check shapes
+    logfml, theta_map, theta_cov = logmarglike_scalingmodel_gaussianprior_jitvmap(
+        ymod, y, yinvvar, logyinvvar, mu, muinvvar, logmuinvvar
+    )
+    for x in [logfml, theta_map, theta_cov]:
+        assert_equal_shape([theta_truth, x])
+        assert np.all(np.isfinite(x))
+
+
 def generate_sample_grid(theta_mean, theta_std, n):
     """
     Create a meshgrid of n ** n_dim samples,
@@ -66,7 +198,7 @@ def make_masked_noisy_data(y_truth, masked_fraction=0.5):
 
     Parameters
     ----------
-    y_truth : ndarray (nobj, npix)
+    y_truth : ndarray (...)
         Input noiseless data
 
     masked_fraction: scalar
@@ -74,19 +206,18 @@ def make_masked_noisy_data(y_truth, masked_fraction=0.5):
 
     Returns
     -------
-    y_withzeros, yinvvar_withzeros, logyinvvar_withzeros : ndarray (..., npix)
+    y_withzeros, yinvvar_withzeros, logyinvvar_withzeros : ndarray (...)
         output noisy data, inverse variance, and log inverse variance,
         with masked pixels (= zeros in yinvvar_withzeros and logyinvvar_withzeros)
 
     """
     if len(y_truth.shape) == 1:
         y_truth = y_truth[None, :]
-    nobj, n_pix_y = y_truth.shape
-    rn = jax.random.normal(key, (nobj, n_pix_y))
+    rn = jax.random.normal(key, y_truth.shape)
     yinvvar = 10 ** rn
-    rn = jax.random.normal(key, (nobj, n_pix_y))
+    rn = jax.random.normal(key, y_truth.shape)
     y = y_truth + rn * (yinvvar ** -0.5)
-    rn = onp.random.uniform(size=n_pix_y * nobj).reshape((nobj, n_pix_y))
+    rn = onp.random.uniform(size=y_truth.size).reshape(y_truth.shape)
     mask_y = rn > masked_fraction
     yinvvar_withzeros = yinvvar * mask_y
     y_withzeros = y * mask_y

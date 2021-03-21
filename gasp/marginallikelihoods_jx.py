@@ -138,10 +138,6 @@ def logmarglike_lineargaussianmodel_twotransfers(
         data and data inverse variances
     M_T : ndarray (n_components, n_pix_y)
         design matrix of linear model
-    z, zinvvar : ndarray (n_pix_z)
-        data and data variances for y
-    R_T : ndarray (n_components, n_pix_z)
-        design matrix of linear model for z
     mu, muinvvar : ndarray (n_components)
         data and data variances for y
 
@@ -206,10 +202,6 @@ def logmarglike_lineargaussianmodel_twotransfers_jit(
         data and data inverse variances
     M_T : ndarray (n_components, n_pix_y)
         design matrix of linear model
-    z, zinvvar : ndarray (n_pix_z)
-        data and data variances for y
-    R_T : ndarray (n_components, n_pix_z)
-        design matrix of linear model for z
     mu, muinvvar : ndarray (n_components)
         data and data variances for y
 
@@ -418,4 +410,79 @@ def logmarglike_lineargaussianmodel_threetransfers_jit(
 logmarglike_lineargaussianmodel_threetransfers_jitvmap = vmap(
     logmarglike_lineargaussianmodel_threetransfers_jit,
     in_axes=(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+)
+
+
+@jit
+def logmarglike_scalingmodel_flatprior_jit(
+    ymod,  #  (n_components, n_pix_y)
+    y,  # (n_components, n_pix_y)
+    yinvvar,  # (n_components, n_pix_y)
+    logyinvvar,  # (n_components, n_pix_y)
+):
+    """
+    Fit model to one Gaussian data set, with Gaussian prior on scaling.
+
+    Parameters
+    ----------
+    y, yinvvar, logyinvvar : ndarray (n_components, n_pix_y)
+        data and data inverse variances
+    ymod : ndarray (n_components, n_pix_y)
+        design matrix of linear model
+    mu, muinvvar : ndarray (n_components)
+        priors
+
+    Returns
+    -------
+    logfml : ndarray (n_components)
+        log likelihood values with parameters marginalised and at best fit
+    theta_map : ndarray (n_components)
+        Best fit MAP parameters
+    theta_cov : ndarray (n_components)
+        Parameter covariance
+
+    """
+    log2pi = np.log(2.0 * np.pi)
+    ny = np.count_nonzero(yinvvar)
+    # n_components
+    FOT = np.sum(ymod * y * yinvvar, axis=-1)
+    FTT = np.sum(ymod ** 2 * yinvvar, axis=-1)
+    FOO = np.sum(ymod ** 2 * yinvvar, axis=-1)
+    logSigma_det = np.sum(logyinvvar, axis=-1)
+    ellML = FOT / FTT
+    chi2 = FOO - (FOT / FTT) * FOT
+    logfml = -0.5 * (chi2 + np.log(FTT) - logSigma_det + ny * log2pi)
+    theta_map = FOT / FTT
+    theta_cov = FTT ** -1
+    return logfml, theta_map, theta_cov
+
+
+def logmarglike_scalingmodel_gaussianprior_jit(
+    ymod,  #  (n_components, n_pix_y)
+    y,  # (n_components, n_pix_y)
+    yinvvar,  # (n_components, n_pix_y)
+    logyinvvar,  # (n_components, n_pix_y)
+    mu,  # (n_components)
+    muinvvar,  #  (n_components)
+    logmuinvvar,  # (n_components)
+):
+    (
+        logfml,
+        theta_map,
+        theta_cov,
+    ) = logmarglike_lineargaussianmodel_twotransfers_jitvmap(
+        ymod[:, None, :],
+        y[:, :],
+        yinvvar[:, :],
+        logyinvvar[:, :],
+        mu[:, None],
+        muinvvar[:, None],
+        logmuinvvar[:, None],
+    )
+    return np.squeeze(logfml), np.squeeze(theta_map), np.squeeze(theta_cov)
+
+
+logmarglike_scalingmodel_gaussianprior_jitvmap = vmap(
+    logmarglike_scalingmodel_gaussianprior_jit,
+    in_axes=(0, 0, 0, 0, 0, 0, 0),
 )
