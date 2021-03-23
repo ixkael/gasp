@@ -457,7 +457,8 @@ def logmarglike_scalingmodel_flatprior_jit(
     return logfml, theta_map, theta_cov
 
 
-def logmarglike_scalingmodel_gaussianprior_jit(
+@jit
+def logmarglike_scalingmodel_gaussianprior(
     ymod,  #  (n_components, n_pix_y)
     y,  # (n_components, n_pix_y)
     yinvvar,  # (n_components, n_pix_y)
@@ -482,7 +483,39 @@ def logmarglike_scalingmodel_gaussianprior_jit(
     return np.squeeze(logfml), np.squeeze(theta_map), np.squeeze(theta_cov)
 
 
-logmarglike_scalingmodel_gaussianprior_jitvmap = vmap(
-    logmarglike_scalingmodel_gaussianprior_jit,
-    in_axes=(0, 0, 0, 0, 0, 0, 0),
+logmarglike_scalingmodel_gaussianprior_jitvmap = jit(
+    vmap(
+        logmarglike_scalingmodel_gaussianprior,
+        in_axes=(0, 0, 0, 0, 0, 0, 0),
+    )
 )
+
+
+logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap = jit(
+    vmap(
+        logmarglike_lineargaussianmodel_twotransfers_jitvmap,
+        in_axes=(0, 0, 0, 0, 0, 0, 0),
+    )
+)
+logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap.__doc__ = """
+
+    Parameters
+    ----------
+        ymod,  #  (nobj, nt, n_components, n_pix_y)
+        y,  # (nobj, nt, n_pix_y)
+        yinvvar,  # (nobj, nt, n_pix_y)
+        logyinvvar,  # (nobj, nt, n_pix_y)
+        mu,  # (nobj, nt, n_components)
+        muinvvar,  #  (nobj, nt, n_components)
+        logmuinvvar,  # (nobj, nt, n_components)
+
+    Returns
+    -------
+    logfml : ndarray (nobj)
+        log likelihood values with parameters marginalised and at best fit
+    theta_map : ndarray (nobj, n_components)
+        Best fit MAP parameters
+    theta_cov : ndarray (nobj, n_components, n_components)
+        Parameter covariance
+
+    """
