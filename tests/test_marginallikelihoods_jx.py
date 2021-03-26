@@ -23,21 +23,24 @@ n_pix_z = 10
 n_pix_y = 100
 
 
-def test_photoz_scalingonly_withdust():
+def test_photoz_categorical_and_additive():
 
     nobj = 10
-    n_components = 3
+    n_catcomponents = 3
+    n_addcomponents = 4
     n_pix_y = 13
-    theta_truth = jax.random.normal(key, (nobj, n_components, 2))
+    theta_truth = jax.random.normal(key, (nobj, n_catcomponents, n_addcomponents))
     mu = theta_truth * 1.0
     muinvvar = (mu * 1e2) ** -2
     logmuinvvar = np.where(muinvvar == 0, 0, np.log(muinvvar))
 
     # Scaling should be per object and component
     ymod = jax.random.normal(
-        key, (nobj, n_components, 2, n_pix_y)
-    )  # (nobj, n_components, n_pix_y)
-    it_truth = jax.random.randint(key, (nobj,), 0, n_components)  # true template index
+        key, (nobj, n_catcomponents, n_addcomponents, n_pix_y)
+    )  # (nobj, n_catcomponents, n_pix_y)
+    it_truth = jax.random.randint(
+        key, (nobj,), 0, n_catcomponents
+    )  # true template index
     y_truth = np.sum(theta_truth[:, :, :, None] * ymod, axis=2)
     y_truth = np.vstack(
         [y_truth[i, it, :] for i, it in enumerate(it_truth)]
@@ -47,52 +50,62 @@ def test_photoz_scalingonly_withdust():
 
     redshifts = np.ones((nobj,))
 
-    def init_params(n_pix_y, n_components):
-        return np.ones((n_pix_y + 3 * n_components + 2))
+    def init_params(n_pix_y, n_catcomponents, n_addcomponents):
+        params = onp.zeros(
+            (n_pix_y - 1 + 3 * n_catcomponents - 1 + 2 * (n_addcomponents - 1))
+        )
+        off = n_pix_y - 1 + 3 * n_catcomponents - 1
+        params[off : off + n_addcomponents] = -3
+        return params
 
-    @partial(jit, static_argnums=(2, 3))
-    def extract_params(params, redshifts, n_pix_y, n_components):
+    @partial(jit, static_argnums=(1, 2))
+    def extract_mu_invvar(params, off, size):
+        mu = 10 ** params[off : off + 1 * size]
+        muinvvar = 10 ** params[off + 1 * size : off + 2 * size]
+        return mu, muinvvar
+
+    def zs_to_alphas(zs):
+        """Project the hypercube coefficients onto the simplex"""
+        fac = np.concatenate((1 - zs, np.array([1])))
+        zsb = np.concatenate((np.array([1]), zs))
+        fs = np.cumprod(zsb) * fac
+        return fs
+
+    @partial(jit, static_argnums=(2, 3, 4))
+    def extract_params(params, redshifts, n_pix_y, n_catcomponents, n_addcomponents):
         nobj = redshifts.size
-        zeropoints = 10 ** params[0:n_pix_y]
-        zeropoints /= np.mean(zeropoints[:4])  # first few
-        mu_atz = 10 ** (
-            params[n_pix_y : n_pix_y + n_components][None, :, None]
-            * np.ones((nobj, n_components, 1))
+        zeropoints = np.concatenate([np.ones(1), 10 ** params[0 : n_pix_y - 1]])
+        logweights = np.log(
+            1e-5
+            + zs_to_alphas(
+                10 ** params[n_pix_y - 1 : n_pix_y - 1 + n_catcomponents - 1]
+            )
         )
-        # mu_atz /= np.mean(mu_atz)
-        muinvvar_atz = 10 ** params[
-            n_pix_y + n_components : n_pix_y + 2 * n_components
-        ][None, :, None] * np.ones((nobj, n_components, 1))
-        logweights = params[n_pix_y + 2 * n_components : n_pix_y + 3 * n_components]
-        logweights -= logsumexp(logweights)
-        mudust_atz = 10 ** params[n_pix_y + 2 * n_components + 1] * np.ones(
-            (nobj, n_components, 1)
+        cat_mu, cat_muinvvar = extract_mu_invvar(
+            params, n_pix_y - 1 + n_catcomponents - 1, n_catcomponents
         )
-        mudustinvvar_atz = 10 ** params[n_pix_y + 2 * n_components + 2] * np.ones(
-            (nobj, n_components, 1)
+        add_mu, add_muinvvar = extract_mu_invvar(
+            params, n_pix_y - 1 + 3 * n_catcomponents - 1, n_addcomponents - 1
         )
-        return (
-            zeropoints,
-            mu_atz,
-            muinvvar_atz,
-            logweights,
-            mudust_atz,
-            mudustinvvar_atz,
+        cat_mu = cat_mu[None, :, None] * np.ones((nobj, n_catcomponents, 1))
+        cat_muinvvar = cat_muinvvar[None, :, None] * np.ones((nobj, n_catcomponents, 1))
+        add_mu = add_mu[None, None, :] * np.ones(
+            (nobj, n_catcomponents, n_addcomponents - 1)
         )
+        add_muinvvar = add_muinvvar[None, None, :] * np.ones(
+            (nobj, n_catcomponents, n_addcomponents - 1)
+        )
+        mu = np.concatenate([cat_mu, add_mu], axis=2)
+        muinvvar = np.concatenate([cat_muinvvar, add_muinvvar], axis=2)
+        return (zeropoints, logweights, mu, muinvvar)
 
-    @jax.partial(jit, static_argnums=(3, 4))
-    def model_fn(params, ymod, data, n_pix_y, n_components):
+    @jax.partial(jit, static_argnums=(3, 4, 5))
+    def model_fn(params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
         y_uncorr, yerr_uncorr, redshifts = data
-        (
-            zeropoints,
-            mu,
-            muinvvar,
-            logweights,
-            mudust,
-            mudustinvvar,
-        ) = extract_params(params, redshifts, n_pix_y, n_components)
+        (zeropoints, logweights, mu, muinvvar) = extract_params(
+            params, redshifts, n_pix_y, n_catcomponents, n_addcomponents
+        )
         logmuinvvar = np.log(muinvvar)
-        logmudustinvvar = np.log(mudustinvvar)
         y = y_uncorr * zeropoints[None, None, :]
         yerr = yerr_uncorr * zeropoints[None, None, :]
         yinvvar = yerr ** -2
@@ -102,37 +115,37 @@ def test_photoz_scalingonly_withdust():
             theta_map,
             theta_cov,
         ) = logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap(
-            ymod[:, :, :, :],
-            y[:, :, :],
-            yinvvar[:, :, :],
-            logyinvvar[:, :, :],
-            np.concatenate([mu, mudust], axis=2),
-            np.concatenate([muinvvar, mudustinvvar], axis=2),
-            np.concatenate([logmuinvvar, logmudustinvvar], axis=2),
+            ymod, y, yinvvar, logyinvvar, mu, muinvvar, logmuinvvar
         )
         logfml += logweights[None, :]
         return logfml, theta_map, theta_cov
 
-    @jax.partial(jit, static_argnums=(3, 4))
-    def loss_fn(params, ymod, data, n_pix_y, n_components):
-        logfml, _, _ = model_fn(params, ymod, data, n_pix_y, n_components)
+    @jax.partial(jit, static_argnums=(3, 4, 5))
+    def loss_fn(params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
+        logfml, _, _ = model_fn(
+            params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents
+        )
         return -np.sum(logsumexp(logfml, axis=1))
 
-    params = init_params(n_pix_y, n_components)
+    params = init_params(n_pix_y, n_catcomponents, n_addcomponents)
+    (zeropoints, logweights, mu, muinvvar) = extract_params(
+        params, redshifts, n_pix_y, n_catcomponents, n_addcomponents
+    )
+
     learning_rate = 1e-4
     opt_init, opt_update, get_params = jax.experimental.optimizers.adam(learning_rate)
     opt_state = opt_init(params)
 
-    fac = np.ones((1, n_components, 1))
+    fac = np.ones((1, n_catcomponents, 1))
     data = (y[:, None, :] * fac, yerr[:, None, :] * fac, redshifts)
 
-    loss = loss_fn(params, ymod, data, n_pix_y, n_components)
+    loss = loss_fn(params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents)
 
-    @jax.partial(jit, static_argnums=(4, 5))
-    def update(step, opt_state, ymod, data, n_pix_y, n_components):
+    @jax.partial(jit, static_argnums=(4, 5, 6))
+    def update(step, opt_state, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
         params = get_params(opt_state)
         value, grads = jax.value_and_grad(loss_fn)(
-            params, ymod, data, n_pix_y, n_components
+            params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents
         )
         opt_state = opt_update(step, grads, opt_state)
         return value, opt_state
@@ -140,7 +153,7 @@ def test_photoz_scalingonly_withdust():
     num_iterations = 10
     for step in range(num_iterations):
         loss_value, opt_state = update(
-            step, opt_state, ymod, data, n_pix_y, n_components
+            step, opt_state, ymod, data, n_pix_y, n_catcomponents, n_addcomponents
         )
 
 
@@ -167,22 +180,25 @@ def test_photoz_scalingonly():
     redshifts = np.ones((nobj,))
 
     def init_params(n_pix_y, n_components):
-        return np.ones((n_pix_y + 3 * n_components))
+        return np.ones((n_pix_y - 1 + 3 * n_components))
 
     @partial(jit, static_argnums=(2, 3))
     def extract_params(params, redshifts, n_pix_y, n_components):
-        zeropoints = 10 ** params[0:n_pix_y]
-        zeropoints /= np.mean(zeropoints[:4])  # first few
+        zeropoints = np.concatenate([np.ones(1), 10 ** params[0 : n_pix_y - 1]])
         mu_atz = 10 ** (
-            params[n_pix_y : n_pix_y + n_components][None, :]
+            params[n_pix_y - 1 : n_pix_y - 1 + n_components][None, :]
             * np.ones_like(redshifts)[:, None]
         )
-        # mu_atz /= np.mean(mu_atz)
         muinvvar_atz = (
-            10 ** params[n_pix_y + n_components : n_pix_y + 2 * n_components][None, :]
+            10
+            ** params[n_pix_y - 1 + n_components : n_pix_y - 1 + 2 * n_components][
+                None, :
+            ]
             * np.ones_like(redshifts)[:, None]
         )
-        logweights = params[n_pix_y + 2 * n_components : n_pix_y + 3 * n_components]
+        logweights = params[
+            n_pix_y - 1 + 2 * n_components : n_pix_y - 1 + 3 * n_components
+        ]
         logweights -= logsumexp(logweights)
         return zeropoints, mu_atz, muinvvar_atz, logweights
 
