@@ -5,11 +5,20 @@ from gasp.cosmo import D_L
 import scipy.interpolate
 from sedpy import observate
 
+from jax.scipy.special import gammaln
+
 
 def interp(xnew, x, y):
     return scipy.interpolate.interp1d(
         x, y, kind="nearest", bounds_error=False, fill_value=0, assume_sorted=True
     )(xnew)
+
+
+def logredshiftprior(x, a, b):
+    # Eq 7 in https://arxiv.org/pdf/1807.01391.pdf
+    logconst = (a + 1) / a * np.log(b) - np.log(a) + gammaln((a + 1) / a)
+    val = a * np.log(x) - x ** a / b - logconst
+    return val
 
 
 def load_test_sed():

@@ -52,10 +52,10 @@ def test_photoz_categorical_and_additive():
 
     def init_params(n_pix_y, n_catcomponents, n_addcomponents):
         params = onp.zeros(
-            (n_pix_y - 1 + 3 * n_catcomponents - 1 + 2 * (n_addcomponents - 1))
+            (n_pix_y - 1 + 5 * n_catcomponents + 2 * (n_addcomponents - 1))
         )
-        off = n_pix_y - 1 + 3 * n_catcomponents - 1
-        params[off : off + n_addcomponents] = -3
+        off = n_pix_y - 1 + 5 * n_catcomponents
+        params[off : off + n_addcomponents - 1] = -3
         return params
 
     @partial(jit, static_argnums=(1, 2))
@@ -64,28 +64,20 @@ def test_photoz_categorical_and_additive():
         muinvvar = 10 ** params[off + 1 * size : off + 2 * size]
         return mu, muinvvar
 
-    def zs_to_alphas(zs):
-        """Project the hypercube coefficients onto the simplex"""
-        fac = np.concatenate((1 - zs, np.array([1])))
-        zsb = np.concatenate((np.array([1]), zs))
-        fs = np.cumprod(zsb) * fac
-        return fs
-
     @partial(jit, static_argnums=(2, 3, 4))
     def extract_params(params, redshifts, n_pix_y, n_catcomponents, n_addcomponents):
         nobj = redshifts.size
         zeropoints = np.concatenate([np.ones(1), 10 ** params[0 : n_pix_y - 1]])
-        logweights = np.log(
-            1e-5
-            + zs_to_alphas(
-                10 ** params[n_pix_y - 1 : n_pix_y - 1 + n_catcomponents - 1]
-            )
-        )
+        logweights = 10 ** params[n_pix_y - 1 : n_pix_y - 1 + n_catcomponents]
+        logweights -= logsumexp(logweights)
         cat_mu, cat_muinvvar = extract_mu_invvar(
-            params, n_pix_y - 1 + n_catcomponents - 1, n_catcomponents
+            params, n_pix_y - 1 + n_catcomponents, n_catcomponents
+        )
+        alphas, betas = extract_mu_invvar(
+            params, n_pix_y - 1 + 3 * n_catcomponents, n_catcomponents
         )
         add_mu, add_muinvvar = extract_mu_invvar(
-            params, n_pix_y - 1 + 3 * n_catcomponents - 1, n_addcomponents - 1
+            params, n_pix_y - 1 + 5 * n_catcomponents, n_addcomponents - 1
         )
         cat_mu = cat_mu[None, :, None] * np.ones((nobj, n_catcomponents, 1))
         cat_muinvvar = cat_muinvvar[None, :, None] * np.ones((nobj, n_catcomponents, 1))
@@ -97,12 +89,12 @@ def test_photoz_categorical_and_additive():
         )
         mu = np.concatenate([cat_mu, add_mu], axis=2)
         muinvvar = np.concatenate([cat_muinvvar, add_muinvvar], axis=2)
-        return (zeropoints, logweights, mu, muinvvar)
+        return (zeropoints, logweights, alphas, betas, mu, muinvvar)
 
     @jax.partial(jit, static_argnums=(3, 4, 5))
     def model_fn(params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
         y_uncorr, yerr_uncorr, redshifts = data
-        (zeropoints, logweights, mu, muinvvar) = extract_params(
+        (zeropoints, logweights, alphas, betas, mu, muinvvar) = extract_params(
             params, redshifts, n_pix_y, n_catcomponents, n_addcomponents
         )
         logmuinvvar = np.log(muinvvar)
@@ -117,7 +109,10 @@ def test_photoz_categorical_and_additive():
         ) = logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap(
             ymod, y, yinvvar, logyinvvar, mu, muinvvar, logmuinvvar
         )
-        logfml += logweights[None, :]
+        lnpz = logredshiftprior(
+            redshifts[:, None], 10 ** alphas[None, :], 10 ** betas[None, :]
+        )
+        logfml += logweights[None, :] + lnpz
         return logfml, theta_map, theta_cov
 
     @jax.partial(jit, static_argnums=(3, 4, 5))
@@ -126,6 +121,15 @@ def test_photoz_categorical_and_additive():
             params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents
         )
         return -np.sum(logsumexp(logfml, axis=1))
+
+    @jax.partial(jit, static_argnums=(4, 5, 6))
+    def update(step, opt_state, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
+        params = get_params(opt_state)
+        value, grads = jax.value_and_grad(loss_fn)(
+            params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents
+        )
+        opt_state = opt_update(step, grads, opt_state)
+        return value, opt_state
 
     params = init_params(n_pix_y, n_catcomponents, n_addcomponents)
     (zeropoints, logweights, mu, muinvvar) = extract_params(
@@ -140,15 +144,6 @@ def test_photoz_categorical_and_additive():
     data = (y[:, None, :] * fac, yerr[:, None, :] * fac, redshifts)
 
     loss = loss_fn(params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents)
-
-    @jax.partial(jit, static_argnums=(4, 5, 6))
-    def update(step, opt_state, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
-        params = get_params(opt_state)
-        value, grads = jax.value_and_grad(loss_fn)(
-            params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents
-        )
-        opt_state = opt_update(step, grads, opt_state)
-        return value, opt_state
 
     num_iterations = 10
     for step in range(num_iterations):

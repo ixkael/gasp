@@ -4,6 +4,20 @@ from gasp.photoz import *
 import pytest
 import numpy as np
 from sedpy import observate
+import jax.random
+
+key = jax.random.PRNGKey(42)
+
+
+def test_logredshiftprior():
+
+    for _ in range(10):
+        x = np.linspace(0, 5, 100000)
+        a = 10 ** (1 + jax.random.normal(key, (4,)) / 2)
+        b = 10 ** (1 + jax.random.normal(key, (4,)) / 2)
+        y = np.exp(logredshiftprior(x[:, None], a[None, :], b[None, :]))
+        norms = np.trapz(y, x, axis=0)
+        assert np.allclose(norms, np.ones_like(norms), rtol=1e-1)
 
 
 def test_photometry_and_transferfunctions():
