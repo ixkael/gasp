@@ -492,10 +492,7 @@ logmarglike_scalingmodel_gaussianprior_jitvmap = jit(
 
 
 logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap = jit(
-    vmap(
-        logmarglike_lineargaussianmodel_twotransfers_jitvmap,
-        in_axes=(0, 0, 0, 0, 0, 0, 0),
-    )
+    vmap(logmarglike_lineargaussianmodel_twotransfers_jitvmap)
 )
 logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap.__doc__ = """
 
@@ -519,3 +516,8 @@ logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap.__doc__ = """
         Parameter covariance
 
     """
+
+
+logmarglike_lineargaussianmodel_threetransfers_jitvmapvmap = jit(
+    vmap(logmarglike_lineargaussianmodel_threetransfers_jitvmap)
+)
