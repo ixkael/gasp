@@ -490,6 +490,31 @@ logmarglike_scalingmodel_gaussianprior_jitvmap = jit(
     )
 )
 
+logmarglike_lineargaussianmodel_onetransfer_jitvmapvmap = jit(
+    vmap(logmarglike_lineargaussianmodel_onetransfer_jitvmap)
+)
+logmarglike_lineargaussianmodel_onetransfer_jitvmapvmap.__doc__ = """
+    Fit linear model to a batch of Gaussian data sets,
+    with no (=uniform) prior on the linear components.
+
+    Parameters
+    ----------
+    ymod,  #  (nobj, nt, n_components, n_pix_y)
+    y,  # (nobj, nt, n_pix_y)
+    yinvvar,  # (nobj, nt, n_pix_y)
+    logyinvvar,  # (nobj, nt, n_pix_y)
+
+    Returns
+    -------
+    logfml : ndarray (nobj, nt)
+        log likelihood values with parameters marginalised and at best fit
+    theta_map : ndarray (nobj, nt, n_components)
+        Best fit MAP parameters
+    theta_cov : ndarray (nobj, nt, n_components, n_components)
+        Parameter covariance
+
+    """
+
 
 logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap = jit(
     vmap(logmarglike_lineargaussianmodel_twotransfers_jitvmap)
@@ -508,11 +533,11 @@ logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap.__doc__ = """
 
     Returns
     -------
-    logfml : ndarray (nobj)
+    logfml : ndarray (nobj, nt)
         log likelihood values with parameters marginalised and at best fit
-    theta_map : ndarray (nobj, n_components)
+    theta_map : ndarray (nobj, nt, n_components)
         Best fit MAP parameters
-    theta_cov : ndarray (nobj, n_components, n_components)
+    theta_cov : ndarray (nobj, nt, n_components, n_components)
         Parameter covariance
 
     """
@@ -521,3 +546,30 @@ logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap.__doc__ = """
 logmarglike_lineargaussianmodel_threetransfers_jitvmapvmap = jit(
     vmap(logmarglike_lineargaussianmodel_threetransfers_jitvmap)
 )
+logmarglike_lineargaussianmodel_threetransfers_jitvmapvmap.__doc__ = """
+
+    Parameters
+    ----------
+    ell,  # (nobj, nt, )
+    ymod,  #  (nobj, nt, n_components, n_pix_y)
+    zmod,  # (nobj, nt, n_components, n_pix_z)
+    y,  # (nobj, nt, n_pix_y)
+    yinvvar,  # (nobj, nt, n_pix_y),
+    logyinvvar,  # (nobj, nt, n_pix_y),
+    z,  #  (nobj, nt, n_pix_z)
+    zinvvar,  #  (nobj, nt, n_pix_z)
+    logzinvvar,  #  (nobj, nt, n_pix_z)
+    mu,  # (nobj, nt, n_components)
+    muinvvar,  # (nobj, nt, n_components)
+    logmuinvvar,  # (nobj, nt, n_components)
+
+    Returns
+    -------
+    logfml : ndarray (nobj, nt)
+        log likelihood values with parameters marginalised and at best fit
+    theta_map : ndarray (nobj, nt, n_components)
+        Best fit MAP parameters
+    theta_cov : ndarray (nobj, nt, n_components, n_components)
+        Parameter covariance
+
+    """
