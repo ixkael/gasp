@@ -23,15 +23,17 @@ def logredshiftprior(x, a, b):
 
 def load_test_sed():
     """
-    -
+    Loading test SED
 
     Parameters
     ----------
-    - : ndarray ()
-        -
+    None
 
     Returns
     -------
+    lambda_aa, f_lambda_aa: ndarray (size, )
+        arrays containing the wavelength (in Angstrom)
+        and some rest-frame spectral energy distribution f_nu(lambda)
 
     """
     data = np.genfromtxt("data/seds/CWW/El_B2004a.dat")
@@ -66,8 +68,12 @@ def get_redshifted_photometry(lambda_aa, f_lambda_aa, redshift_grid, filter_list
 
     Parameters
     ----------
-    - : ndarray ()
-        -
+    lambda_aa, f_lambda_aa: ndarray (size, )
+        wavelength (in Angstrom) and rest-frame spectral energy distribution f_nu(lambda)
+    redshift_grid: ndarray (size, )
+        array of redshift values to compute the photometry on
+    filter_list: list of strings
+        names of the photometric filters (will load with the SEDPY package)
 
     Returns
     -------
