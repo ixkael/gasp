@@ -8,6 +8,73 @@ from sedpy import observate
 from jax.scipy.special import gammaln
 
 
+def igm_madau_tau(lam, zz):
+    # ADAPTED FROM FSPS
+    nspec = lam.size
+    tau = np.zeros_like(lam)
+    xc = np.zeros_like(lam)
+    lobs = np.zeros_like(lam)
+    igm_absorb = np.zeros_like(lam)
+    #routine to include IGM absorption via Madau (1995)
+    #this routine includes a fudge factor (accessed by pset%igm_factor)
+    #that allows the user to scale the IGM optical depth
+
+    nly = 17
+    lyw = np.zeros((nly, ))
+    lycoeff = np.zeros((nly, ))
+
+
+    lyw = [1215.67, 1025.72, 972.537, 949.743, 937.803,
+          930.748, 926.226, 923.150, 920.963, 919.352,
+          918.129, 917.181, 916.429, 915.824, 915.329,
+          914.919, 914.576]
+
+    lycoeff = [0.0036,0.0017,0.0011846,0.0009410,0.0007960,
+       0.0006967,0.0006236,0.0005665,0.0005200,0.0004817,
+       0.0004487,0.0004200,0.0003947,0.000372,0.000352,
+       0.0003334,0.00031644]
+
+    lylim   = 911.75
+    a_metal = 0.0017
+
+    z1   = 1 + zz
+    lobs = lam * z1
+    xc   = lobs / lylim
+
+    #Ly series line blanketing
+    for i in range(nly):
+        if lam[0] > lyw[i] or lam[-1] < lyw[i]:
+            continue
+        #vv = min(max(locate(lam, lyw[i]), 1), nspec)
+        print(lam[0], lam[-1], lyw[i])
+        vv = np.where(np.logical_and(lam[1:] > lyw[i], lam[:-1] < lyw[i]))[0][0]
+        #print(lyw[i], lam[0], lam[-1], lam[vv], lam[vv+1])
+        tau[0:vv] = tau[0:vv] + lycoeff[i] *(lobs[0:vv]/lyw[i])**3.46
+        #add metal blanketing (this has ~no effect)
+        if i == 1:
+            tau[0:vv] = tau[0:vv] + a_metal*(lobs[0:vv]/lyw[i])**1.68
+
+    #LyC absorption
+    if lam[0] < lylim:
+        #vv = min(max(locate(lam,lylim),1),nspec)
+        vv = np.where(np.logical_and(lam[1:] > lylim, lam[:-1] < lylim))[0][0]
+        #approximation to Eqn 16 in Madau (1995); see his footnote 3
+        tau[0:vv] = tau[0:vv] +\
+              (0.25*xc[0:vv]**3*(z1**0.46-xc[0:vv]**0.46)) +\
+              (9.4*xc[0:vv]**1.5*(z1**0.18-xc[0:vv]**0.18)) -\
+              (0.7*xc[0:vv]**3*(xc[0:vv]**(-1.32)-z1**(-1.32))) -\
+              (0.023*(z1**1.68-xc[0:vv]**1.68))
+
+    #the LyC fitting function seems to fall apart at really short
+    #wavelengths, so when tau starts to decrease, cap it at the max.
+    vv = np.argmax(tau)
+    tau[0:vv] = tau[vv]
+
+    #attenuate the input spectrum by the IGM
+    #include a fudge factor to dial up/down the strength
+    return tau
+
+
 def interp(xnew, x, y):
     return scipy.interpolate.interp1d(
         x, y, kind="nearest", bounds_error=False, fill_value=0, assume_sorted=True
@@ -62,7 +129,7 @@ class PhotometricFilter:
         self.lambdaMax = tabulatedWavelength[ind[-1]]
 
 
-def get_redshifted_photometry(lambda_aa, f_lambda_aa, redshift_grid, filter_list):
+def get_redshifted_photometry(lambda_aa, f_lambda_aa, redshift_grid, filter_list, apply_madau_igm=False):
     """
     -
 
@@ -98,6 +165,10 @@ def get_redshifted_photometry(lambda_aa, f_lambda_aa, redshift_grid, filter_list
         # separate redshift factor
         f_lambda_aa_redshifted = f_lambda_aa
         f_nu_aa_redshifted = f_lambda_aa_redshifted * lambda_aa_redshifted ** 2 / 3e18
+
+        if apply_madau_igm:
+            tau = igm_madau_tau(lambda_aa_redshifted, redshift)
+            f_nu_aa_redshifted *= np.exp(-tau)
 
         # get magnitudes using sedpy
         mags = observate.getSED(
