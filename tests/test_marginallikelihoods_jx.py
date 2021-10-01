@@ -7,9 +7,13 @@ import numpy as onp
 
 import jax.random
 import jax.numpy as np
-from jax import grad, jit, vmap, hessian, partial
+from functools import partial
+from jax import grad, jit, vmap, hessian
 from jax.scipy.special import logsumexp
 from jax.experimental import optimizers
+from jax.scipy.special import gammaln
+from jax.scipy.stats import norm
+
 
 from chex import assert_shape, assert_equal_shape
 
@@ -21,6 +25,18 @@ nobj = 10
 n_components = 2
 n_pix_z = 10
 n_pix_y = 100
+
+
+def logredshiftprior(x, a, b):
+    # Eq 7 in https://arxiv.org/pdf/1807.01391.pdf
+    logconst = (a + 1) / a * np.log(b) - np.log(a) + gammaln((a + 1) / a)
+    val = a * np.log(x) - x ** a / b - logconst
+    return val
+
+
+def logredshiftprior(x, a, b):
+    lognorm = np.log(norm.cdf(zmax, loc=a, scale=b) - norm.cdf(0, loc=a, scale=b))
+    return norm.logpdf(x, loc=a, scale=b) - lognorm
 
 
 def test_photoz_categorical_and_additive():
@@ -91,7 +107,7 @@ def test_photoz_categorical_and_additive():
         muinvvar = np.concatenate([cat_muinvvar, add_muinvvar], axis=2)
         return (zeropoints, logweights, alphas, betas, mu, muinvvar)
 
-    @jax.partial(jit, static_argnums=(3, 4, 5))
+    @partial(jit, static_argnums=(3, 4, 5))
     def model_fn(params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
         y_uncorr, yerr_uncorr, redshifts = data
         (zeropoints, logweights, alphas, betas, mu, muinvvar) = extract_params(
@@ -109,20 +125,18 @@ def test_photoz_categorical_and_additive():
         ) = logmarglike_lineargaussianmodel_twotransfers_jitvmapvmap(
             ymod, y, yinvvar, logyinvvar, mu, muinvvar, logmuinvvar
         )
-        lnpz = logredshiftprior(
-            redshifts[:, None], 10 ** alphas[None, :], 10 ** betas[None, :]
-        )
+        lnpz = logredshiftprior(redshifts[:, None], alphas[None, :], betas[None, :])
         logfml += logweights[None, :] + lnpz
         return logfml, theta_map, theta_cov
 
-    @jax.partial(jit, static_argnums=(3, 4, 5))
+    @partial(jit, static_argnums=(3, 4, 5))
     def loss_fn(params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
         logfml, _, _ = model_fn(
             params, ymod, data, n_pix_y, n_catcomponents, n_addcomponents
         )
         return -np.sum(logsumexp(logfml, axis=1))
 
-    @jax.partial(jit, static_argnums=(4, 5, 6))
+    @partial(jit, static_argnums=(4, 5, 6))
     def update(step, opt_state, ymod, data, n_pix_y, n_catcomponents, n_addcomponents):
         params = get_params(opt_state)
         value, grads = jax.value_and_grad(loss_fn)(
@@ -197,7 +211,7 @@ def test_photoz_scalingonly():
         logweights -= logsumexp(logweights)
         return zeropoints, mu_atz, muinvvar_atz, logweights
 
-    @jax.partial(jit, static_argnums=(3, 4))
+    @partial(jit, static_argnums=(3, 4))
     def model_fn(params, ymod, data, n_pix_y, n_components):
         y_uncorr, yerr_uncorr, redshifts = data
         zeropoints, mu, muinvvar, logweights = extract_params(
@@ -215,7 +229,7 @@ def test_photoz_scalingonly():
         logfml += logweights[None, :]
         return logfml, theta_map, theta_cov
 
-    @jax.partial(jit, static_argnums=(3, 4))
+    @partial(jit, static_argnums=(3, 4))
     def loss_fn(params, ymod, data, n_pix_y, n_components):
         logfml, _, _ = model_fn(params, ymod, data, n_pix_y, n_components)
         return -np.sum(logsumexp(logfml, axis=1))
@@ -229,7 +243,7 @@ def test_photoz_scalingonly():
 
     loss = loss_fn(params, ymod, data, n_pix_y, n_components)
 
-    @jax.partial(jit, static_argnums=(4, 5))
+    @partial(jit, static_argnums=(4, 5))
     def update(step, opt_state, ymod, data, n_pix_y, n_components):
         params = get_params(opt_state)
         value, grads = jax.value_and_grad(loss_fn)(

@@ -93,8 +93,8 @@ def logmarglike_lineargaussianmodel_onetransfer_jit(M_T, y, yinvvar, logyinvvar)
     return logfml, theta_map, theta_cov
 
 
-logmarglike_lineargaussianmodel_onetransfer_jitvmap = vmap(
-    logmarglike_lineargaussianmodel_onetransfer_jit, in_axes=(0, 0, 0, 0)
+logmarglike_lineargaussianmodel_onetransfer_jitvmap = jit(
+    vmap(logmarglike_lineargaussianmodel_onetransfer_jit, in_axes=(0, 0, 0, 0))
 )
 logmarglike_lineargaussianmodel_onetransfer_jitvmap.__doc__ = """
     Fit linear model to a batch of Gaussian data sets,

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from jax import partial, jit
+from functools import partial
+from jax import jit
 import jax.numpy as np
 from jax.lax import dynamic_slice
 
