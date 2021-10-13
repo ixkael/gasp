@@ -20,6 +20,29 @@ def test_logredshiftprior():
         assert np.allclose(norms, np.ones_like(norms), rtol=1e-1)
 
 
+def test_madau():
+
+    filternames = ["decam_u", "decam_g"]
+    filterdir = "data/filters"
+    filter_list = observate.load_filters(filternames, directory=filterdir)
+
+    lambda_aa, f_lambda_aa = load_test_sed()
+    speedoflight = 3e18
+    f_nu_aa = f_lambda_aa * lambda_aa ** 2 / speedoflight
+
+    redshift_grid = np.linspace(0.0, 4, 4)[1:]
+
+    redshifted_fluxes1, redshifted_fluxesb1, redshift_factor = get_redshifted_photometry(
+        lambda_aa, f_lambda_aa, redshift_grid, filter_list, apply_madau_igm=False
+    )
+    redshifted_fluxes2, redshifted_fluxesb2, redshift_factor = get_redshifted_photometry(
+        lambda_aa, f_lambda_aa, redshift_grid, filter_list, apply_madau_igm=True
+    )
+
+    assert np.any(redshifted_fluxes1 != redshifted_fluxes2)
+    assert np.any(redshifted_fluxesb1 != redshifted_fluxesb2)
+
+
 def test_photometry_and_transferfunctions():
 
     filternames = ["decam_g", "decam_r", "decam_z"]
@@ -37,7 +60,6 @@ def test_photometry_and_transferfunctions():
     )
 
     relative_accuracy = 0.01
-    print(redshifted_fluxes)
     assert np.allclose(redshifted_fluxes, redshifted_fluxes2, rtol=relative_accuracy)
 
     (

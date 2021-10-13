@@ -20,19 +20,15 @@ def igm_madau_tau(lam, zz):
     #that allows the user to scale the IGM optical depth
 
     nly = 17
-    lyw = np.zeros((nly, ))
-    lycoeff = np.zeros((nly, ))
-
-
-    lyw = [1215.67, 1025.72, 972.537, 949.743, 937.803,
+    lyw = np.array([1215.67, 1025.72, 972.537, 949.743, 937.803,
           930.748, 926.226, 923.150, 920.963, 919.352,
           918.129, 917.181, 916.429, 915.824, 915.329,
-          914.919, 914.576]
+          914.919, 914.576])
 
-    lycoeff = [0.0036,0.0017,0.0011846,0.0009410,0.0007960,
+    lycoeff = np.array([0.0036,0.0017,0.0011846,0.0009410,0.0007960,
        0.0006967,0.0006236,0.0005665,0.0005200,0.0004817,
        0.0004487,0.0004200,0.0003947,0.000372,0.000352,
-       0.0003334,0.00031644]
+       0.0003334,0.00031644])
 
     lylim   = 911.75
     a_metal = 0.0017
@@ -46,7 +42,7 @@ def igm_madau_tau(lam, zz):
         if lam[0] > lyw[i] or lam[-1] < lyw[i]:
             continue
         #vv = min(max(locate(lam, lyw[i]), 1), nspec)
-        print(lam[0], lam[-1], lyw[i])
+        #print(lam[0], lam[-1], lyw[i])
         vv = np.where(np.logical_and(lam[1:] > lyw[i], lam[:-1] < lyw[i]))[0][0]
         #print(lyw[i], lam[0], lam[-1], lam[vv], lam[vv+1])
         tau[0:vv] = tau[0:vv] + lycoeff[i] *(lobs[0:vv]/lyw[i])**3.46
@@ -164,11 +160,12 @@ def get_redshifted_photometry(lambda_aa, f_lambda_aa, redshift_grid, filter_list
         ) ** -1
         # separate redshift factor
         f_lambda_aa_redshifted = f_lambda_aa
+        if apply_madau_igm:
+            tau = igm_madau_tau(lambda_aa, redshift)
+            f_lambda_aa_redshifted *= np.exp(-tau)
+
         f_nu_aa_redshifted = f_lambda_aa_redshifted * lambda_aa_redshifted ** 2 / 3e18
 
-        if apply_madau_igm:
-            tau = igm_madau_tau(lambda_aa_redshifted, redshift)
-            f_nu_aa_redshifted *= np.exp(-tau)
 
         # get magnitudes using sedpy
         mags = observate.getSED(
